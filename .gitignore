@@ -1,26 +1,39 @@
-# Secrets and environment setup
+# === Secrets & Environment Setup ===
 .env
+*.pem
+*.key
 
-# Virtual Environment
+# === Virtual Environment ===
 .venv/
 venv/
 ENV/
 
-# Python & Pytest cache
+# === Python & Pytest Cache ===
 __pycache__/
 **/__pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
 
-# IDE / Editors
+# === Test Artifacts, Reports & Logs ===
+*.log
+.coverage
+htmlcov/
+coverage.xml
+allure-results/
+allure-report/
+test-results/
+playwright-report/
+blob-report/
+.playwright-cli/
+
+# === IDE & OS Files ===
 .vscode/
 .idea/
 *.swp
+.DS_Store
+Thumbs.db
 
-# Reports & Logs
-*.log
-allure-results/
-allure-report/
-htmlcov/
-.coverage
+# === Temporary & Swap Files ===
+*.tmp
+*.bak
