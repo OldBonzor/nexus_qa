@@ -1,0 +1,26 @@
+# Secrets and environment setup
+.env
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Python & Pytest cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# IDE / Editors
+.vscode/
+.idea/
+*.swp
+
+# Reports & Logs
+*.log
+allure-results/
+allure-report/
+htmlcov/
+.coverage
