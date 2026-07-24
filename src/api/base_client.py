@@ -6,6 +6,7 @@ and provides a concrete BaseClient utilizing the `requests` library.
 """
 
 import abc
+import json as json_lib
 import logging
 from typing import Any, Dict, Optional
 
@@ -47,6 +48,7 @@ class AbstractAPIClient(abc.ABC):
         params: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
+        expected_status: Optional[int] = None,
         **kwargs: Any
     ) -> requests.Response:
         """Perform an HTTP GET request.
@@ -56,6 +58,7 @@ class AbstractAPIClient(abc.ABC):
             params (Optional[Dict[str, Any]]): Query parameters to attach.
             headers (Optional[Dict[str, str]]): HTTP headers to include.
             timeout (Optional[float]): Timeout in seconds.
+            expected_status (Optional[int]): Expected status code for auto-assertion.
             **kwargs (Any): Additional keyword arguments.
 
         Returns:
@@ -71,6 +74,7 @@ class AbstractAPIClient(abc.ABC):
         json: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
+        expected_status: Optional[int] = None,
         **kwargs: Any
     ) -> requests.Response:
         """Perform an HTTP POST request.
@@ -81,6 +85,7 @@ class AbstractAPIClient(abc.ABC):
             json (Optional[Dict[str, Any]]): JSON payload structure.
             headers (Optional[Dict[str, str]]): HTTP headers to include.
             timeout (Optional[float]): Timeout in seconds.
+            expected_status (Optional[int]): Expected status code for auto-assertion.
             **kwargs (Any): Additional keyword arguments.
 
         Returns:
@@ -96,6 +101,7 @@ class AbstractAPIClient(abc.ABC):
         json: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
+        expected_status: Optional[int] = None,
         **kwargs: Any
     ) -> requests.Response:
         """Perform an HTTP PUT request.
@@ -106,6 +112,7 @@ class AbstractAPIClient(abc.ABC):
             json (Optional[Dict[str, Any]]): JSON payload structure.
             headers (Optional[Dict[str, str]]): HTTP headers to include.
             timeout (Optional[float]): Timeout in seconds.
+            expected_status (Optional[int]): Expected status code for auto-assertion.
             **kwargs (Any): Additional keyword arguments.
 
         Returns:
@@ -119,6 +126,7 @@ class AbstractAPIClient(abc.ABC):
         url: str,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
+        expected_status: Optional[int] = None,
         **kwargs: Any
     ) -> requests.Response:
         """Perform an HTTP DELETE request.
@@ -127,6 +135,7 @@ class AbstractAPIClient(abc.ABC):
             url (str): The target endpoint or relative path.
             headers (Optional[Dict[str, str]]): HTTP headers to include.
             timeout (Optional[float]): Timeout in seconds.
+            expected_status (Optional[int]): Expected status code for auto-assertion.
             **kwargs (Any): Additional keyword arguments.
 
         Returns:
@@ -160,6 +169,42 @@ class BaseClient(AbstractAPIClient):
         # This default timeout will be automatically applied to every outgoing request 
         # unless overridden by an explicit method-level 'timeout' argument.
         self.default_timeout = float(settings.PAGE_TIMEOUT) / 1000.0
+
+
+    def assert_status_code(self, response: requests.Response, expected_code: int = 200) -> None:
+        """Assert that the response status code matches the expected code.
+
+        Args:
+            response (requests.Response): The response object from requests.
+            expected_code (int): The expected HTTP status code. Defaults to 200.
+
+        Raises:
+            AssertionError: If the response status code does not match the expected code.
+        """
+        if response.status_code != expected_code:
+            try:
+                body_json = response.json()
+                body_str = json_lib.dumps(body_json, indent=2)
+            except (ValueError, TypeError):
+                body_str = response.text
+
+            # Truncate response body if it's excessively long to keep pytest outputs neat
+            max_length = 1000
+            if len(body_str) > max_length:
+                body_str = body_str[:max_length] + "\n... [TRUNCATED] ..."
+
+            # Extract request details from response
+            request_method = response.request.method if response.request else "UNKNOWN"
+            request_url = response.request.url if response.request else "UNKNOWN"
+
+            error_msg = (
+                f"Status Code Mismatch!\n"
+                f"Request: [{request_method}] {request_url}\n"
+                f"Expected status: {expected_code}\n"
+                f"Actual status:   {response.status_code}\n"
+                f"Response body:\n{body_str}"
+            )
+            raise AssertionError(error_msg)
 
     def _resolve_url(self, endpoint: str) -> str:
         """Resolve a full URL given an endpoint or path.
@@ -221,6 +266,7 @@ class BaseClient(AbstractAPIClient):
         self,
         method: str,
         url: str,
+        expected_status: Optional[int] = None,
         **kwargs: Any
     ) -> requests.Response:
         """Centralized request execution engine.
@@ -231,10 +277,12 @@ class BaseClient(AbstractAPIClient):
         3. Sanitizing sensitive request data (headers, params, json, etc.) for logging.
         4. Comprehensive Logging (Requests/Responses metadata).
         5. Centralized exception handling and wrapping failures in APIClientError.
+        6. Centralized status code assertions if expected_status is specified.
 
         Args:
             method (str): HTTP method (e.g., 'GET', 'POST').
             url (str): Endpoint or full URL.
+            expected_status (Optional[int]): Expected status code for auto-assertion.
             **kwargs (Any): HTTP request arguments (headers, parameters, body, timeout, etc.).
 
         Returns:
@@ -243,6 +291,7 @@ class BaseClient(AbstractAPIClient):
         Raises:
             APIClientError: If the request fails due to a network error, timeout, 
                            or underlying RequestException.
+            AssertionError: If expected_status is set and mismatch occurs.
         """
         # 1. Resolve URL
         resolved_url = self._resolve_url(url)
@@ -276,10 +325,15 @@ class BaseClient(AbstractAPIClient):
                 response.status_code,
                 response.elapsed
             )
+
+            # 7. Automatically assert status code if specified
+            if expected_status is not None:
+                self.assert_status_code(response, expected_status)
+
             return response
             
         except requests.exceptions.RequestException as exc:
-            # 7. Intercept errors, log nicely with stack info, and raise custom exception
+            # 8. Intercept errors, log nicely with stack info, and raise custom exception
             error_msg = f"{type(exc).__name__}: {str(exc)}"
             logger.error(
                 "HTTP Request Failed: [%s] %s - Reason: %s",
@@ -296,6 +350,7 @@ class BaseClient(AbstractAPIClient):
         params: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
+        expected_status: Optional[int] = None,
         **kwargs: Any
     ) -> requests.Response:
         """Perform an HTTP GET request."""
@@ -303,6 +358,7 @@ class BaseClient(AbstractAPIClient):
         return self._execute_request(
             method="GET",
             url=url,
+            expected_status=expected_status,
             params=params,
             headers=headers,
             timeout=timeout,
@@ -316,12 +372,14 @@ class BaseClient(AbstractAPIClient):
         json: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
+        expected_status: Optional[int] = None,
         **kwargs: Any
     ) -> requests.Response:
         """Perform an HTTP POST request."""
         return self._execute_request(
             method="POST",
             url=url,
+            expected_status=expected_status,
             data=data,
             json=json,
             headers=headers,
@@ -336,12 +394,14 @@ class BaseClient(AbstractAPIClient):
         json: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
+        expected_status: Optional[int] = None,
         **kwargs: Any
     ) -> requests.Response:
         """Perform an HTTP PUT request."""
         return self._execute_request(
             method="PUT",
             url=url,
+            expected_status=expected_status,
             data=data,
             json=json,
             headers=headers,
@@ -354,12 +414,14 @@ class BaseClient(AbstractAPIClient):
         url: str,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
+        expected_status: Optional[int] = None,
         **kwargs: Any
     ) -> requests.Response:
         """Perform an HTTP DELETE request."""
         return self._execute_request(
             method="DELETE",
             url=url,
+            expected_status=expected_status,
             headers=headers,
             timeout=timeout,
             **kwargs
