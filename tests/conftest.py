@@ -8,6 +8,7 @@ from typing import Any, Generator
 import pytest
 import requests
 from src.api.base_client import BaseClient
+from src.api.models.auth_models import LoginRequest, LoginResponse
 from src.api.products_client import ProductsClient
 from src.api.models.product_models import PriceBoundaries
 
@@ -25,6 +26,26 @@ def api_client() -> Generator[BaseClient, None, None]:
     client = BaseClient()
     yield client
     client.session.close()
+
+
+@pytest.fixture(scope="module")
+def auth_token(api_client: BaseClient) -> str:
+    """Dynamically fetch a valid Bearer access token via the login endpoint.
+
+    Returns:
+        str: JWT access token for authenticated API requests.
+    """
+    payload = LoginRequest(
+        email="admin@practicesoftwaretesting.com",
+        password="welcome01"
+    )
+    response = api_client.post(
+        "/users/login",
+        json=payload.model_dump(),
+        expected_status=200,
+    )
+    token_data = LoginResponse.model_validate(response.json())
+    return token_data.access_token
 
 
 @pytest.fixture(scope="module")
@@ -71,7 +92,7 @@ def valid_filter_pairs(products_client: ProductsClient) -> list[dict[str, Any]]:
 
     if len(unique_pairs) < 2:
         pytest.fail(
-            f"Could not find at least 2 unique category+brand pairs in DB. Found: {len(unique_pairs)}"
+            f"Could not find at least 2 unique category+brand pairs in DB. Found: {len(unique_pairs)}",
         )
 
     return unique_pairs
