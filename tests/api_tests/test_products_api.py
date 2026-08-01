@@ -3,7 +3,11 @@
 from math import ceil
 from typing import Any, Optional
 import pytest
-from src.api.models.product_models import Category, Brand, PriceBoundaries, ProductsListResponse, ProductItem
+from src.api.models.product_models import (
+    PriceBoundaries,
+    ProductItem,
+    ProductsListResponse,
+)
 from src.api.products_client import ProductsClient
 
 
@@ -22,7 +26,6 @@ class TestProductsList:
         # - First product's price is greater that 0 (data[0].price > 0)
         assert len(products_data.data) > 0, "Expected products list must not be empty"
         assert products_data.data[0].price > 0, "Expected product price must be greater than 0"
-
 
     @pytest.mark.parametrize("page", [1, 2], ids=["first_page", "second_page"])
     def test_get_products_pagination(self, products_client: ProductsClient, page: int):
@@ -55,7 +58,6 @@ class TestProductsList:
         assert len(products_data.data) > 0, (
             f"Expected page {page} to contain product items"
         )
-
 
     def test_get_products_last_page(self, products_client: ProductsClient):
         """Guarantees testing the backend last page calculation and 
@@ -108,7 +110,6 @@ class TestProductsList:
             f"but got {len(last_page_data.data)} items"
         )
 
-
     def test_get_products_pagination_invalid(self, products_client: ProductsClient):
         """Verify that requesting a page beyond last_page returns an empty list."""
         # --- Arrange ---
@@ -135,7 +136,7 @@ class TestProductsList:
 class TestProductDetails:
     """Suite for testing product details endpoint (/products/{id})."""
     def test_get_product_by_id(self, products_client: ProductsClient):
-        """Verify that product requested using valid ID returns 200 code with product data"""
+        """Verify that product requested using valid ID returns 200 code with product data."""
         # --- Arrange ---
         # 1. Getting list of items to get existing item ID from it
         products_response = products_client.get_products(expected_status=200)
@@ -165,7 +166,6 @@ class TestProductDetails:
         assert product_data.price == expected_price, (f"Expected {expected_price}, "
             f"but got {product_data.price} instead")
 
-
     @pytest.mark.parametrize(
         "invalid_id, expected_status, expected_error_message",
         [
@@ -173,7 +173,7 @@ class TestProductDetails:
             ("   ", 404, "Requested item not found"),     # Spacebars in id
             ("@#$%^&*()~!?,;", 404, "Requested item not found"),     # Special symbols in id
         ],
-        ids=["non_existing_id", "only_spacebars_in_id", "only_special_symbols_in_id"]
+        ids=["non_existing_id", "only_spacebars_in_id", "only_special_symbols_in_id"],
         )
     def test_get_product_by_id_not_found(
         self, 
@@ -204,14 +204,15 @@ class TestProductsSearch:
         (["hammer", "HAMMER", "HaMmEr"], "hammer"),
         (["pliers", "PLIERS", "PlIeRs"], "pliers")
         ],
-        ids=["lower_capital_mixed_1", "lower_capital_mixed_2"])
+        ids=["lower_capital_mixed_1", "lower_capital_mixed_2"],
+        )
     def test_search_products_by_name_case_insensitive(
         self, 
         products_client: ProductsClient, 
         queries: list[str],
         expected_keyword: str,
-        ):
-        """Check searching products by keyword using query parameter (q)"""
+    ):
+        """Check searching products by keyword using query parameter (q)."""
 
         # --- Arrange ---
         baseline_total = None
@@ -246,12 +247,12 @@ class TestProductsSearch:
         "   ",                       # Spacebars in item name
         "@#$%^&*()~!?,;",           # Special symbols in item name
     ],
-    ids=["non_existing_name", "only_spacebars_in_name", "only_special_symbols_in_name"]
+    ids=["non_existing_name", "only_spacebars_in_name", "only_special_symbols_in_name"],
     )
     def test_search_products_by_name_not_found(
         self, 
         products_client: ProductsClient, 
-        invalid_name: str
+        invalid_name: str,
     ):
         """Check searching products endpoint with different invalid names in query."""
         # --- Arrange & Act ---
@@ -273,7 +274,7 @@ class TestProductsFilter:
     """Suite for testing product list filtering by category and brand."""
     @pytest.mark.parametrize(
         "filter_mode", ["category_only", "brand_only", "category_and_brand"],
-        ids=["category_only", "brand_only", "combined_category_and_brand"]
+        ids=["category_only", "brand_only", "combined_category_and_brand"],
     )
     def test_filter_products_by_category_by_brand_mix(
         self, 
@@ -289,12 +290,15 @@ class TestProductsFilter:
         # to avoid hardcoding single entities and prevent backend response mocking false-positives
         for pair in valid_filter_pairs:
             # --- Arrange ---
-            if filter_mode == "category_only":
-                params = {"by_category": pair["by_category"]}
-            elif filter_mode == "brand_only":
-                params = {"by_brand": pair["by_brand"]}
-            else:
-                params = pair
+            match filter_mode:
+                case "category_only":
+                    params = {"by_category": pair["by_category"]}
+                case "brand_only":
+                    params = {"by_brand": pair["by_brand"]}
+                case "category_and_brand":
+                    params = pair
+                case _:
+                    raise ValueError(f"Unsupported filter_mode: {filter_mode}")
 
             # --- Act ---
             response = products_client.get_products(params=params, expected_status=200)
@@ -314,7 +318,7 @@ class TestProductsFilter:
                     assert product.brand.id == params["by_brand"], (
                         f"Expected brand ID {params['by_brand']}, got {product.brand.id}"
                     )
-
+    
     @pytest.mark.parametrize(
         "filter_mode",
         [
@@ -323,45 +327,46 @@ class TestProductsFilter:
             "both_invalid",
             "valid_category_invalid_brand",
             "invalid_category_valid_brand",
+            "whitespace_category_only",
+            "whitespace_brand_only",
         ],
-        ids=[
-            "invalid_category_only",
-            "invalid_brand_only",
-            "both_invalid",
-            "valid_category_invalid_brand",
-            "invalid_category_valid_brand",
-        ]
     )
     def test_filter_products_by_non_existing_categories_and_brands_returns_empty(
         self, 
         products_client: ProductsClient, 
         valid_filter_pairs: list[dict], 
-        filter_mode: str
+        filter_mode: str,
     ):
-        """Check that filtering by non-existing category or brand IDs returns an empty list."""
+        """Check that filtering by non-existing category or brand IDs (or spacebars) returns an empty list."""
 
         # --- Arrange ---
         valid_pair = valid_filter_pairs[0]
         non_existing_id = "non-existing-id-999"
 
-        if filter_mode == "invalid_category_only":
-            params = {"by_category": non_existing_id}
-        elif filter_mode == "invalid_brand_only":
-            params = {"by_brand": non_existing_id}
-        elif filter_mode == "both_invalid":
-            params = {"by_category": non_existing_id, "by_brand": non_existing_id}
-        elif filter_mode == "valid_category_invalid_brand":
-            params = {"by_category": valid_pair["by_category"], "by_brand": non_existing_id}            
-        elif filter_mode == "invalid_category_valid_brand":
-            params = {"by_category": non_existing_id, "by_brand": valid_pair["by_brand"]}
+        match filter_mode:
+            case "invalid_category_only":
+                params = {"by_category": non_existing_id}
+            case "invalid_brand_only":
+                params = {"by_brand": non_existing_id}
+            case "both_invalid":
+                params = {"by_category": non_existing_id, "by_brand": non_existing_id}
+            case "valid_category_invalid_brand":
+                params = {"by_category": valid_pair["by_category"], "by_brand": non_existing_id}            
+            case "invalid_category_valid_brand":
+                params = {"by_category": non_existing_id, "by_brand": valid_pair["by_brand"]}
+            case "whitespace_category_only":
+                params = {"by_category": "   "}
+            case "whitespace_brand_only":
+                params = {"by_brand": "   "}
+            case _:
+                raise ValueError(f"Unsupported filter_mode: {filter_mode}")
 
         # --- Act & Assert ---
         response = products_client.get_products(params=params, expected_status=200)
         products_data = ProductsListResponse(**response.json())
     
-        assert products_data.total == 0, (f"Expected empty list for params {params}, got {products_data.data}")
-        assert len(products_data.data) == 0, (f"Expected total = 0 for params {params}, got {products_data.total}")
-
+        assert products_data.total == 0, f"Expected empty list for params {params}, got {products_data.data}"
+        assert len(products_data.data) == 0, f"Expected total = 0 for params {params}, got {products_data.total}"
 
     def test_filter_products_by_non_overlapping_category_and_brand_returns_empty(
         self,
@@ -445,42 +450,42 @@ class TestProductsPriceFilter:
             # Group 3: all_items (Filter ignored)
             # ==============================================================================
             pytest.param(
-                lambda b: {"between": "price,,"},
-                "filter_ignored",
-                id="8. Filter Ignored (price,,)",
-            ),
-            pytest.param(
-                lambda b: {"between": "price,,null"},
-                "filter_ignored",
-                id="9. Filter Ignored (price,,null)",
-            ),
-            pytest.param(
-                lambda b: {"between": "price,null,"},
-                "filter_ignored",
-                id="10. Filter Ignored (price,null,)",
-            ),
-            pytest.param(
-                lambda b: {"between": "price,null,null"},
-                "filter_ignored",
-                id="11. Filter Ignored (price,null,null)",
-            ),
-            pytest.param(
                 lambda b: {},
                 "all_items",
-                id="12. Filter Ignored (no between param)",
+                id="8. Filter Ignored (no between param)",
             ),
             # ==============================================================================
             # Group 4: empty_result (Empty result)
             # ==============================================================================
             pytest.param(
+                lambda b: {"between": "price,,"},
+                "empty_result",
+                id="9. Empty Result (price,,)",
+            ),
+            pytest.param(
+                lambda b: {"between": "price,,null"},
+                "empty_result",
+                id="10. Empty Result (price,,null)",
+            ),
+            pytest.param(
+                lambda b: {"between": "price,null,"},
+                "empty_result",
+                id="11. Empty Result (price,null,)",
+            ),
+            pytest.param(
+                lambda b: {"between": "price,null,null"},
+                "empty_result",
+                id="12. Empty Result (price,null,null)",
+            ),
+            pytest.param(
                 lambda b: {"between": f"price,{b.max_price + 10000.00},{b.max_price + 20000.00}"},
                 "empty_result",
-                id="13. Out of Bounds (+10k..+20k -> empty_result)",
+                id="13. Empty Result (Out of Bounds: +10k..+20k)",
             ),
             pytest.param(
                 lambda b: {"between": "price,0,0"},
                 "empty_result",
-                id="14. Zero Price Range (0..0 -> empty_result)",
+                id="14. Empty Result (Zero Price Range: 0..0)",
             ),
         ],
     )
@@ -496,89 +501,87 @@ class TestProductsPriceFilter:
         # --- Arrange ---
         params = get_params_func(price_boundaries)
 
-        # ----------------------------------------------------------------------------------
-        # Group 1: exact_bounds
-        # ----------------------------------------------------------------------------------
-        if validation_type == "exact_bounds":
-            # --- Act ---
-            all_items, _ = self._fetch_all_pages(products_client, params)
+        match validation_type:
+            # ----------------------------------------------------------------------------------
+            # Group 1: exact_bounds
+            # ----------------------------------------------------------------------------------
+            case "exact_bounds":
+                # --- Act ---
+                all_items, _ = self._fetch_all_pages(products_client, params)
 
-            # Protection from backend error returning empty items list
-            assert len(all_items) > 0, f"Filter {params} returned 0 items, expected at least 1."
+                # --- Assert ---
+                assert len(all_items) > 0, f"Filter {params} returned 0 items, expected at least 1."
 
-            # Parse limits
-            raw_between = params.get("between", "").replace("price,", "").split(",")
-            raw_min = raw_between[0] if len(raw_between) > 0 else ""
-            raw_max = raw_between[1] if len(raw_between) > 1 else ""
+                raw_between = params.get("between", "").replace("price,", "").split(",")
+                raw_min = raw_between[0] if len(raw_between) > 0 else ""
+                raw_max = raw_between[1] if len(raw_between) > 1 else ""
 
-            if raw_min and raw_min != "null":
-                min_limit = float(raw_min)
-            else:
-                min_limit = None
+                min_limit = float(raw_min) if raw_min and raw_min != "null" else None
+                max_limit = float(raw_max) if raw_max and raw_max != "null" else None
 
-            if raw_max and raw_max != "null":
-                max_limit = float(raw_max)
-            else:
-                max_limit = None
+                for item in all_items:
+                    price = float(item["price"])
+                    if min_limit is not None:
+                        assert price >= min_limit, f"Price {price} is less than min_limit {min_limit}"
+                    if max_limit is not None:
+                        assert price <= max_limit, f"Price {price} is greater than max_limit {max_limit}"
 
-            # --- Assert ---
-            for item in all_items:
-                price = float(item["price"])
-                if min_limit is not None:
-                    assert price >= min_limit, f"Price {price} is less than min_limit {min_limit}"
-                if max_limit is not None:
-                    assert price <= max_limit, f"Price {price} is greater than max_limit {max_limit}"
+            # ----------------------------------------------------------------------------------
+            # Group 2: full_coverage
+            # ----------------------------------------------------------------------------------
+            case "full_coverage":
+                # --- Act ---
+                all_items, total = self._fetch_all_pages(products_client, params)
 
-        # ----------------------------------------------------------------------------------
-        # Group 2: full_coverage
-        # ----------------------------------------------------------------------------------
-        elif validation_type == "full_coverage":
-            # --- Act ---
-            all_items, total = self._fetch_all_pages(products_client, params)
+                # --- Assert ---
+                assert total == len(raw_products_data), (
+                    f"Expected total count {len(raw_products_data)}, but API returned total={total}"
+                )
+                assert len(all_items) == len(raw_products_data), (
+                    f"Expected total items {len(raw_products_data)}, but fetched {len(all_items)}"
+                )
 
-            # --- Assert ---
-            assert total == len(raw_products_data), (
-                f"Expected total count {len(raw_products_data)}, but API returned total={total}"
-            )
-            assert len(all_items) == len(raw_products_data), (
-                f"Expected total items {len(raw_products_data)}, but fetched {len(all_items)}"
-            )
+                returned_prices = [float(item["price"]) for item in all_items]
+                assert price_boundaries.min_price in returned_prices, (
+                    f"min_price ({price_boundaries.min_price}) is missing from response"
+                )
+                assert price_boundaries.max_price in returned_prices, (
+                    f"max_price ({price_boundaries.max_price}) is missing from response"
+                )
 
-            returned_prices = [float(item["price"]) for item in all_items]
-            assert price_boundaries.min_price in returned_prices, (
-                f"min_price ({price_boundaries.min_price}) is missing from response"
-            )
-            assert price_boundaries.max_price in returned_prices, (
-                f"max_price ({price_boundaries.max_price}) is missing from response"
-            )
+            # ----------------------------------------------------------------------------------
+            # Group 3: all_items
+            # ----------------------------------------------------------------------------------
+            case "all_items" | "filter_ignored":
+                # --- Act ---
+                all_items, total = self._fetch_all_pages(products_client, params)
 
-        # ----------------------------------------------------------------------------------
-        # Group 3: all_items
-        # ----------------------------------------------------------------------------------
-        elif validation_type == "all_items":
-            # --- Act ---
-            all_items, total = self._fetch_all_pages(products_client, params)
+                # --- Assert ---
+                assert total == len(raw_products_data), (
+                    f"Filter should be ignored. Expected total={len(raw_products_data)}, got {total}"
+                )
+                assert len(all_items) == len(raw_products_data), (
+                    f"Filter should be ignored. Expected {len(raw_products_data)} items, got {len(all_items)}"
+                )
 
-            # --- Assert ---
-            assert total == len(raw_products_data), (
-                f"Filter should be ignored. Expected total={len(raw_products_data)}, got {total}"
-            )
-            assert len(all_items) == len(raw_products_data), (
-                f"Filter should be ignored. Expected {len(raw_products_data)} items, got {len(all_items)}"
-            )
+            # ----------------------------------------------------------------------------------
+            # Group 4: empty_result
+            # ----------------------------------------------------------------------------------
+            case "empty_result":
+                # --- Act ---
+                response = products_client.get_products(params=params, expected_status=200)
+                res_json = response.json()
+                items = res_json.get("data", [])
 
-        # ----------------------------------------------------------------------------------
-        # Group 4: empty_result
-        # ----------------------------------------------------------------------------------
-        elif validation_type == "empty_result":
-            # --- Act ---
-            response = products_client.get_products(params=params, expected_status=200)
-            res_json = response.json()
-            items = res_json.get("data", [])
+                # --- Assert ---
+                assert len(items) == 0, f"Expected 0 items in data, got {len(items)}"
+                assert res_json.get("total", 0) == 0, f"Expected total=0, got {res_json.get('total')}"
 
-            # --- Assert ---
-            assert len(items) == 0, f"Expected 0 items in data, got {len(items)}"
-            assert res_json.get("total", 0) == 0, f"Expected total=0, got {res_json.get('total')}"
+            # ----------------------------------------------------------------------------------
+            # Safeguard: Unsupported validation type
+            # ----------------------------------------------------------------------------------
+            case _:
+                raise ValueError(f"Unsupported validation_type: {validation_type}")
 
     @staticmethod
     def _fetch_all_pages(
@@ -610,7 +613,6 @@ class TestProductsPriceFilter:
 
         return all_items, total_items
 
-
     @pytest.mark.parametrize("invalid_filter, description", [
         ("price,100,10", "Inverted range (min > max)"),
         ("price,-50,100", "Negative min price"),
@@ -626,8 +628,9 @@ class TestProductsPriceFilter:
         "negative_both",
         "comma_float",
         "non_numeric",
-        "integer_overflow"
-    ])
+        "integer_overflow",
+    ]
+    )
     def test_filter_products_by_price_range_invalid(
         self, 
         products_client: ProductsClient, 
@@ -635,13 +638,13 @@ class TestProductsPriceFilter:
         description: str, 
     ):
         """Verify that invalid price filters do not crash the backend with 500 error."""
-        # Arrange
+        # --- Arrange ---
         params = {"between": invalid_filter}
 
-        # Act
+        # --- Act ---
         response = products_client.get_products(params=params, expected_status=None)
 
-        # Assert
+        # --- Assert ---
         match response.status_code:
             case 500:
                 pytest.fail(
@@ -660,20 +663,434 @@ class TestProductsPriceFilter:
                 pytest.fail(f"Unexpected HTTP status code {response.status_code} for [{description}]")
 
 
-    @pytest.mark.skip(reason="WIP")
-    def test_filter_products_combined(self, products_client: ProductsClient):
+class TestProductsComplexFiltering:
+    """Integration test suite verifying complex multi-parameter product filter combinations."""
+
+    def _verify_page_2_filters_persistence(
+        self,
+        products_client: ProductsClient,
+        query_params: dict[str, Any],
+        parsed_response: ProductsListResponse,
+    ) -> None:
+        """Verifies that query filters persist when navigating to page 2."""
+        if parsed_response.last_page < 2:
+            return
+
+        page_2_response = products_client.get_products(
+            params={**query_params, "page": 2},
+            expected_status=200,
+        )
+        parsed_page_2 = ProductsListResponse.model_validate(page_2_response.json())
+
+        assert parsed_page_2.current_page == 2, (
+            f"Expected current_page=2, got {parsed_page_2.current_page}"
+        )
+
+        # Extract expectations once via pattern matching before looping over products
+        expected_category_id: str | None = None
+        expected_brand_id: str | None = None
+        expected_rental: bool | None = None
+        expected_location_offer: bool | None = None
+
+        for key, value in query_params.items():
+            match key:
+                case "by_category":
+                    expected_category_id = str(value)
+                case "by_brand":
+                    expected_brand_id = str(value)
+                case "is_rental":
+                    expected_rental = str(value).lower() == "true"
+                case "is_location_offer":
+                    expected_location_offer = str(value).lower() == "true"
+
+        # Validate page 2 products in O(N) time complexity without nested parameter iteration
+        for product in parsed_page_2.data:
+            if expected_category_id and product.category:
+                assert product.category.id == expected_category_id, (
+                    f"Page 2 filter loss: expected category {expected_category_id}, got {product.category.id}"
+                )
+            if expected_brand_id and product.brand:
+                assert product.brand.id == expected_brand_id, (
+                    f"Page 2 filter loss: expected brand {expected_brand_id}, got {product.brand.id}"
+                )
+            if expected_rental is not None:
+                assert product.is_rental is expected_rental, (
+                    f"Page 2 filter loss: expected is_rental={expected_rental}, got {product.is_rental}"
+                )
+            if expected_location_offer is not None:
+                assert product.is_location_offer is expected_location_offer, (
+                    f"Page 2 filter loss: expected is_location_offer={expected_location_offer}, got {product.is_location_offer}"
+                )
+
+    def _assert_case_domain_rules(
+        self,
+        case_type: str,
+        products: list[ProductItem],
+        filter_pair: dict[str, str],
+        price_boundaries: PriceBoundaries,
+        search_keyword: str | None,
+    ) -> None:
+        """Validates case-specific domain filter expectations via pattern matching."""
+        match case_type:
+            case "category_brand_price_rental":
+                if len(products) == 0:
+                    pytest.skip(
+                        f"Skipping assertion: no rental products found in database for "
+                        f"category_id='{filter_pair.get('by_category')}' and "
+                        f"brand_id='{filter_pair.get('by_brand')}'"
+                    )
+
+                for p in products:
+                    assert p.category and p.category.id == filter_pair["by_category"]
+                    assert p.brand and p.brand.id == filter_pair["by_brand"]
+                    assert (
+                        price_boundaries.min_price
+                        <= p.price
+                        <= price_boundaries.max_price
+                    )
+                    assert p.is_rental is True
+
+            case "category_price_search":
+                assert len(products) > 0, "Expected matching products, got 0"
+                for p in products:
+                    assert p.category and p.category.id == filter_pair["by_category"]
+                    assert (
+                        price_boundaries.min_price
+                        <= p.price
+                        <= price_boundaries.max_price
+                    )
+                    assert search_keyword and (
+                        (p.name and search_keyword.lower() in p.name.lower())
+                        or (
+                            p.description
+                            and search_keyword.lower() in p.description.lower()
+                        )
+                    ), f"Search keyword '{search_keyword}' not found in product name or description"
+
+            case "brand_location_offer_price":
+                assert len(products) > 0, "Expected matching products, got 0"
+                for p in products:
+                    assert p.brand and p.brand.id == filter_pair["by_brand"]
+                    assert p.price == price_boundaries.exact_price
+                    assert p.is_location_offer is True
+
+            case "non_overlapping_with_price":
+                assert len(products) == 0, f"Expected empty array, got {len(products)}"
+
+            case "all_six_filters":
+                for p in products:
+                    assert p.category and p.category.id == filter_pair["by_category"]
+                    assert p.brand and p.brand.id == filter_pair["by_brand"]
+                    assert p.is_rental is True
+                    assert p.is_location_offer is True
+
+    @pytest.mark.parametrize(
+        "case_type, use_non_overlapping, extra_params, search_keyword",
+        [
+            ("category_brand_price_rental", False, {"is_rental": "true"}, None),
+            ("category_price_search", False, {}, "Pliers"),
+            ("brand_location_offer_price", False, {"is_location_offer": "true"}, None),
+            ("non_overlapping_with_price", True, {}, None),
+            (
+                "all_six_filters",
+                False,
+                {"is_rental": "true", "is_location_offer": "true"},
+                "Pliers",
+            ),
+        ],
+        ids=[
+            "combine_category_brand_price_range_and_rental",
+            "combine_category_price_range_and_search_query",
+            "combine_brand_location_offer_and_exact_price",
+            "combine_non_overlapping_filters_with_price_range_returns_empty",
+            "combine_all_six_filters_simultaneously",
+        ],
+    )
+    def test_filter_products_combined(
+        self,
+        products_client: ProductsClient,
+        valid_filter_pairs: list[dict[str, str]],
+        non_overlapping_pairs: list[dict[str, str]],
+        price_boundaries: PriceBoundaries,
+        case_type: str,
+        use_non_overlapping: bool,
+        extra_params: dict[str, Any],
+        search_keyword: str | None,
+    ) -> None:
+        """Verify multi-parameter combined filtering and pagination persistence."""
         # --- Arrange ---
+        filter_pair = (
+            non_overlapping_pairs[0] if use_non_overlapping else valid_filter_pairs[0]
+        )
+        query_params = {
+            **filter_pair,
+            **extra_params,
+            "between": f"price,{price_boundaries.min_price},{price_boundaries.max_price}",
+        }
+
+        match case_type:
+            case "category_price_search":
+                query_params.pop("by_brand", None)
+                query_params["q"] = search_keyword
+            case "brand_location_offer_price":
+                query_params.pop("by_category", None)
+                query_params["between"] = (
+                    f"price,{price_boundaries.exact_price},{price_boundaries.exact_price}"
+                )
+            case "all_six_filters":
+                query_params["q"] = search_keyword
+
         # --- Act ---
-        # --- Assert ---
-        pass
+        response = products_client.get_products(params=query_params, expected_status=200)
+        parsed_response = ProductsListResponse.model_validate(response.json())
+
+        # --- Assert: Pagination smoke check ---
+        assert parsed_response.current_page == 1
+        assert parsed_response.per_page == 9
+
+        # --- Assert: Page 2 persistence & Domain filter assertions ---
+        self._verify_page_2_filters_persistence(products_client, query_params, parsed_response)
+        self._assert_case_domain_rules(
+            case_type,
+            parsed_response.data,
+            filter_pair,
+            price_boundaries,
+            search_keyword,
+        )
 
 
-class TestProductsSorting:
-    @pytest.mark.skip(reason="WIP")
-    def test_get_products_sorting(self, products_client: ProductsClient):
+class TestProductsFilteringNegative:
+    """Negative test suite verifying product filter tolerance to malformed query parameters."""
+
+    @pytest.mark.parametrize(
+        "query_params",
+        [
+            {"is_rental": "invalid_boolean"},
+            {"is_location_offer": "not_a_bool"},
+        ],
+        ids=[
+            "invalid_is_rental_flag_ignored",
+            "invalid_is_location_offer_flag_ignored",
+        ],
+    )
+    def test_filter_products_ignores_invalid_boolean_flags(
+        self,
+        products_client: ProductsClient,
+        query_params: dict[str, Any],
+    ) -> None:
+        """Verify API ignores malformed boolean parameters and returns non-empty product list."""
+        # --- Arrange & Act ---
+        response = products_client.get_products(params=query_params, expected_status=200)
+        parsed_response = ProductsListResponse.model_validate(response.json())
+
+        # --- Assert: API falls back to default page (9 products per page) ---
+        assert len(parsed_response.data) == 9, (
+            f"Expected default page size of 9 products, got {len(parsed_response.data)}"
+        )
+        assert parsed_response.total > 0
+
+    @pytest.mark.parametrize(
+        "raw_params, mix_valid_data",
+        [
+            # All 6 filter parameters malformed simultaneously
+            (
+                {
+                    "by_category": "invalid_cat_uuid!",
+                    "by_brand": "invalid_brand_uuid!",
+                    "is_rental": "not_a_bool",
+                    "is_location_offer": "maybe",
+                    "between": "price,abc,xyz",
+                    "q": "invalid_search_query_!@#",
+                },
+                False,
+            ),
+            # Valid category & brand mixed with malformed price range
+            (
+                {"is_rental": "true", "between": "price,invalid_min,invalid_max"},
+                True,
+            ),
+        ],
+        ids=[
+            "all_six_malformed_filters_simultaneously_returns_empty",
+            "malformed_price_between_returns_empty",
+        ],
+    )
+    def test_filter_products_malformed_ranges_and_ids_return_empty(
+        self,
+        products_client: ProductsClient,
+        valid_filter_pairs: list[dict[str, Any]],
+        raw_params: dict[str, Any],
+        mix_valid_data: bool,
+    ) -> None:
+        """Verify API safely returns empty data list (total: 0) when query conditions produce no matches."""
         # --- Arrange ---
+        query_params = raw_params.copy()
+        if mix_valid_data:
+            query_params.update(valid_filter_pairs[0])
+
         # --- Act ---
+        response = products_client.get_products(params=query_params, expected_status=200)
+        parsed_response = ProductsListResponse.model_validate(response.json())
+
+        # --- Assert: Query conditions match nothing, returning empty list safely ---
+        assert parsed_response.total == 0, f"Expected 0 products, got {parsed_response.total}"
+        assert len(parsed_response.data) == 0
+
+
+class TestProductsSortingPositive:
+    """Positive test suite verifying product list sorting by name and price in both directions."""
+
+    # --- Helpers ---
+
+    def _extract_sort_values(self, products: list[ProductItem], sort_field: str) -> list[Any]:
+        """Extract and normalize values from products list for sorting verification."""
+        match sort_field:
+            case "price":
+                return [product.price for product in products]
+            case "name":
+                # Lowercase names to ensure case-insensitive alphabetical comparison matching DB collation
+                return [product.name.lower() for product in products]
+            case _:
+                raise ValueError(f"Unsupported sort field: {sort_field}")
+
+    def _assert_is_sorted(
+        self,
+        products: list[ProductItem],
+        sort_field: str,
+        direction: str,
+    ) -> None:
+        """Assert that extracted product values match expected sorted order."""
+        is_descending: bool = direction == "desc"
+        actual_values = self._extract_sort_values(products, sort_field)
+        expected_values = sorted(actual_values, reverse=is_descending)
+
+        assert actual_values == expected_values, (
+            f"Products are not correctly sorted by '{sort_field}' in '{direction}' order.\n"
+            f"Actual:   {actual_values}\n"
+            f"Expected: {expected_values}"
+        )
+
+    # --- Tests ---
+
+    @pytest.mark.parametrize(
+        "sort_field, direction",
+        [
+            ("price", "asc"),
+            ("price", "desc"),
+            ("name", "asc"),
+            ("name", "desc"),
+        ],
+        ids=[
+            "sort_by_price_ascending",
+            "sort_by_price_descending",
+            "sort_by_name_ascending",
+            "sort_by_name_descending",
+        ],
+    )
+    def test_get_products_sorting(
+        self,
+        products_client: ProductsClient,
+        sort_field: str,
+        direction: str,
+    ) -> None:
+        """Verify API correctly returns sorted product data according to requested field and direction."""
+        # --- Arrange ---
+        query_params: dict[str, Any] = {"sort": f"{sort_field},{direction}"}
+
+        # --- Act ---
+        response = products_client.get_products(params=query_params, expected_status=200)
+        parsed_response = ProductsListResponse.model_validate(response.json())
+
         # --- Assert ---
-        pass
+        assert len(parsed_response.data) == 9, (
+            f"Expected default page size of 9 products, got {len(parsed_response.data)}"
+        )
+        self._assert_is_sorted(parsed_response.data, sort_field, direction)
 
 
+class TestProductsSortingNegative:
+    """Negative test suite verifying API fallback behavior when invalid sorting parameters are provided."""
+
+    @pytest.mark.parametrize(
+        "sort_param",
+        [
+            pytest.param(
+                "invalid_field,asc",
+                marks=pytest.mark.xfail(
+                    reason="BUG: Backend throws 500 Internal Server Error instead of fallback to default sorting"
+                ),
+                id="invalid_sort_field",
+            ),
+            pytest.param(
+                "price,sideways",
+                id="invalid_sort_direction",
+            ),
+            pytest.param(
+                "price-asc",
+                marks=pytest.mark.xfail(
+                    reason="BUG: Backend throws 500 Internal Server Error when comma delimiter is missing"
+                ),
+                id="invalid_delimiter_format",
+            ),
+        ],
+    )
+    def test_get_products_sorting_fallback(
+        self,
+        products_client: ProductsClient,
+        sort_param: str,
+    ) -> None:
+        """Verify API handles invalid sorting parameters gracefully by falling back to default pagination response."""
+        # --- Arrange & Act ---
+        response = products_client.get_products(
+            params={"sort": sort_param},
+            expected_status=200,
+        )
+        parsed_response = ProductsListResponse.model_validate(response.json())
+
+        # --- Assert ---
+        assert len(parsed_response.data) == 9, (
+            f"Expected default fallback page size of 9 products for invalid sort param '{sort_param}', "
+            f"got {len(parsed_response.data)}"
+        )
+        assert parsed_response.total > 0, (
+            f"Expected total products count to be greater than 0 for invalid sort param '{sort_param}'"
+        )
+
+
+class TestProductsSecurity:
+    """Security and sanitization test suite for products filtering and search API endpoints."""
+
+    @pytest.mark.parametrize(
+        "filter_params",
+        [
+            pytest.param({"q": "' OR '1'='1"}, id="sqli_boolean_bypass_search"),
+            pytest.param({"by_category": "'; DROP TABLE products;--"}, id="sqli_destructive_syntax_category"),
+            pytest.param({"q": "<script>alert(1)</script>"}, id="xss_script_injection_search"),
+            pytest.param({"q": "%' OR '%'"}, id="sqli_wildcard_percent_search"),
+            pytest.param({"by_brand": "*"}, id="glob_wildcard_asterisk_brand"),
+            pytest.param({"q": "A" * 2500}, id="buffer_overflow_long_string_search"),
+            pytest.param({"by_category": "01KYMGDH%00"}, id="null_byte_injection_category"),
+        ],
+    )
+    def test_filter_products_with_invalid_or_malicious_strings_returns_empty(
+        self,
+        products_client: ProductsClient,
+        filter_params: dict[str, Any],
+    ) -> None:
+        """Verify API safely handles SQLi, XSS, wildcards, long strings and null-bytes without crashing or exposing data."""
+        # --- Act ---
+        response = products_client.get_products(
+            params=filter_params,
+            expected_status=200,
+        )
+        parsed_response = ProductsListResponse.model_validate(response.json())
+
+        # --- Assert ---
+        assert len(parsed_response.data) == 0, (
+            f"Expected empty data list for malicious/invalid filter {filter_params}, "
+            f"but received {len(parsed_response.data)} items (possible injection or data exposure!)"
+        )
+        assert parsed_response.total == 0, (
+            f"Expected total to be 0 for malicious filter {filter_params}, "
+            f"got total={parsed_response.total}"
+        )
