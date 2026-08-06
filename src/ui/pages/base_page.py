@@ -8,6 +8,7 @@ them in error-handling try-except blocks and standardizing logging.
 import logging
 from typing import Optional
 from playwright.sync_api import Page, Locator, TimeoutError as PlaywrightTimeoutError
+from config.settings import settings
 
 # Configure logger for tracking UI automation actions
 logger = logging.getLogger("nexus_qa.ui")
@@ -36,8 +37,6 @@ class BasePage:
         Args:
             path (str): Relative path (e.g., '/auth/login') or absolute URL.
         """
-        from config.settings import settings
-
         base_url = str(settings.BASE_UI_URL).rstrip("/")
         # If the path is not a full URL, prepend the base URL
         target_url = path if path.startswith("http") else f"{base_url}/{path.lstrip('/')}"

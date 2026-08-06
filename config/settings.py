@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # --- Test User Credentials ---
     TEST_USER_EMAIL: str = Field(default="admin@practicesoftwaretesting.com")
-    TEST_USER_PASSWORD: str = Field(default="admin")
+    TEST_USER_PASSWORD: str = Field(default="welcome01")
 
     # --- Framework Settings ---
     PAGE_TIMEOUT: int = Field(default=30000, description="Timeout in milliseconds for UI elements")
