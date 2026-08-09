@@ -150,3 +150,10 @@ class BasePage:
         except Exception as e:
             logger.error(f"Failed to retrieve page title. Error: {str(e)}")
             raise
+
+    def go_to_cart(self) -> None:
+            """Navigate to the shopping cart by clicking the navigation link."""
+            # Standard selector for the cart link in the header
+            cart_selector = "[data-test='nav-cart']"
+            logger.info("Navigating to cart page.")
+            self.click(cart_selector)

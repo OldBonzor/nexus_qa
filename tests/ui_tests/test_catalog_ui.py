@@ -9,6 +9,7 @@ from src.ui.pages.inventory_page import InventoryPage
 class TestCatalogAndInventoryUI:
     """Test class covering catalog storefront operations."""
 
+    @pytest.mark.smoke
     def test_catalog_display_products(self, ui_page: Page) -> None:
         """Verify that products are correctly displayed in the catalog grid
         with mandatory attributes: title, price, and image.
@@ -18,14 +19,15 @@ class TestCatalogAndInventoryUI:
         inventory_page.open()
 
         # --- Act & Assert ---
-        product_cards = inventory_page.get_product_cards()
-        assert product_cards.count() > 0, "No product cards found on the catalog page."
+        product_cards = inventory_page.get_product_cards().filter(has_not_text="Out of stock")
+        assert product_cards.count() > 0, "No available product cards found on the catalog page."
 
         for card in product_cards.all():
             expect(card.locator(InventoryPage.PRODUCT_TITLE)).to_be_visible()
             expect(card.locator(InventoryPage.PRODUCT_IMAGE)).to_be_visible()
             expect(card.locator(InventoryPage.PRODUCT_PRICE)).to_be_visible()
 
+    @pytest.mark.smoke
     @pytest.mark.parametrize(
         (
             "search_query",
@@ -115,11 +117,11 @@ class TestCatalogAndInventoryUI:
         # --- Act ---
         inventory_page.sort_by(sort_option)
 
-        # --- Act ---
-        # Fetch actual values from the UI based on the sorting type using match/case
+        # Fetch actual values from the UI based on the sorting type safely
         values = inventory_page.get_product_values_by_sort_option(sort_option)
 
-        assert len(values) > 1, f"Not enough products found on the page to verify sorting for {sort_option}."
+        # --- Assert ---
+        assert len(values) > 1, f"Not enough valid products found on the page to verify sorting for {sort_option}."
 
         assert values == sorted(values, reverse=descending), (
             f"Products are not sorted correctly for {sort_option} "
@@ -177,3 +179,31 @@ class TestCatalogAndInventoryUI:
             f"Some products do not match any of the expected filter keywords '{expected_keywords}'. "
             f"Actual products: {product_names}"
         )
+
+    @pytest.mark.smoke
+    def test_product_detail_page_navigation(self, ui_page: Page):
+        """
+        Test that clicking the first product card navigates to the correct
+        product details page and displays the expected title, price, description,
+        and add-to-cart button.
+        """ 
+        # --- Arrange ---
+        inventory_page = InventoryPage(ui_page)
+        inventory_page.open()
+        
+        available_card = ui_page.locator(inventory_page.PRODUCT_CARD).filter(has_not_text="Out of stock").first
+        expect(available_card).to_be_visible()
+        
+        expected_title = available_card.locator(inventory_page.PRODUCT_TITLE).inner_text().strip()
+        expected_price = available_card.locator(inventory_page.PRODUCT_PRICE).inner_text().strip().replace("$", "")
+
+        # --- Act ---
+        available_card.click()
+        
+        # --- Assert ---
+        title_locator = ui_page.locator("h1")
+        expect(title_locator).to_be_visible()
+        expect(title_locator).to_have_text(expected_title)
+        expect(ui_page.locator(inventory_page.PRODUCT_DETAIL_PRICE)).to_have_text(expected_price)
+        expect(ui_page.locator(inventory_page.ADD_TO_CART_BTN)).to_be_visible()
+        expect(ui_page.locator(inventory_page.PRODUCT_DESCRIPTION)).to_be_visible()

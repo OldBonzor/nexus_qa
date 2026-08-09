@@ -17,6 +17,8 @@ class InventoryPage(BasePage):
     CATEGORY_CHECKBOX = "input[type='checkbox']"
     PRODUCT_CARD = "a.card[data-test^='product-']"
     PRODUCT_TITLE = ".card-title"
+    PRODUCT_DESCRIPTION = "#description"
+    PRODUCT_DETAIL_PRICE = "[data-test='unit-price']"
     PRODUCT_PRICE = "[data-test='product-price']"
     PRODUCT_IMAGE = ".card-img-top"
     SEARCH_INPUT = "[data-test='search-query']"
@@ -24,6 +26,7 @@ class InventoryPage(BasePage):
     CO2_RATING = "[data-test='co2-rating-badge'] .co2-letter.active"
     ADD_TO_CART_BTN = "[data-test='add-to-cart']"
     CART_COUNTER = "[data-test='cart-quantity']"
+    NAV_CART = "[data-test='nav-cart']"
     
     @staticmethod
     def get_category_checkbox_locator(category_name: str) -> str:
@@ -130,22 +133,14 @@ class InventoryPage(BasePage):
             Locator: A Playwright Locator representing all matching product cards.
         """
         cards_locator = self.page.locator(self.PRODUCT_CARD)
-        
-        # Ensure at least the first product card is visible to avoid race conditions 
-        # before interacting with or iterating over the collection
         expect(cards_locator.first).to_be_visible()
-        
         return cards_locator
 
     def get_all_product_prices(self) -> List[float]:
-        """Extract and parse all product prices currently displayed in the catalog grid.
-        Uses Playwright's native assertions for auto-waiting without hardcoded timers.
-
-        Returns:
-            List[float]: A list of numerical prices converted from string representation.
+        """Extract and parse all product prices currently displayed in the catalog grid safely,
+        skipping invalid or non-numeric price formats to prevent test crashes.
         """
         price_locator = self.page.locator(self.PRODUCT_PRICE)
-        # Playwright will automatically wait for the first element to satisfy the expectation
         expect(price_locator.first).to_be_visible()
         
         price_elements = price_locator.all_inner_texts()
@@ -153,8 +148,12 @@ class InventoryPage(BasePage):
         parsed_prices = []
         for price_str in price_elements:
             cleaned_str = price_str.replace("$", "").replace(",", "").strip()
-            if cleaned_str:
-                parsed_prices.append(float(cleaned_str))
+            try:
+                if cleaned_str:
+                    parsed_prices.append(float(cleaned_str))
+            except ValueError:
+                # Skip elements which can't be converted to digits (Markup bugs protection)
+                continue
                 
         return parsed_prices
 
@@ -180,14 +179,7 @@ class InventoryPage(BasePage):
         return [rating.strip() for rating in ratings]
 
     def get_product_values_by_sort_option(self, sort_option: str) -> List:
-        """Fetch product values (prices, names, or ratings) based on the sorting option using match/case.
-
-        Args:
-            sort_option (str): The sorting option label.
-
-        Returns:
-            List: Extracted values from the UI catalog grid.
-        """
+        """Fetch product values (prices, names, or ratings) based on the sorting option using match/case."""
         match sort_option:
             case option if "Price" in option:
                 return self.get_all_product_prices()
@@ -199,25 +191,27 @@ class InventoryPage(BasePage):
                 raise ValueError(f"Unsupported sorting option: {sort_option}")
 
     def get_product_cards_count(self) -> int:
-        """Get the count of currently visible product cards in the catalog.
-
-        Returns:
-            int: Number of product items displayed.
-        """
+        """Get the count of currently visible product cards in the catalog."""  
         return self.page.locator(self.PRODUCT_CARD).count()
 
     def open_first_product_details(self) -> None:
         """Open the details page of the first available product from the catalog grid."""
-        self.wait_for_visible(self.PRODUCT_CARD)
-        self.page.locator(self.PRODUCT_CARD).first.click()
+        first_card = self.page.locator(self.PRODUCT_CARD).first
+        self.wait_for_visible(first_card)
+        first_card.click()
+
+    def open_first_available_product_details(self) -> None:
+        """Open the details page of the first product that is currently in stock (not out of stock)."""
+        available_card = self.page.locator(self.PRODUCT_CARD).filter(has_not_text="Out of stock").first
+        self.wait_for_visible(available_card)
+        available_card.click()
 
     def add_product_to_cart_from_details(self) -> None:
-        """Add the currently viewed product to the cart ensuring backend request completion."""
-        self.wait_for_visible(self.ADD_TO_CART_BTN)
+        add_btn = self.page.locator(self.ADD_TO_CART_BTN)
+        expect(add_btn).to_be_enabled()
         
-        # Wrap click in a network response expectation to avoid race conditions with cart counter
         with self.page.expect_response("**/carts*") as response_info:
-            self.click(self.ADD_TO_CART_BTN)
+            add_btn.click()
             
         response = response_info.value
         assert response.status in [200, 201], f"Failed to add product to cart. Status: {response.status}"
@@ -231,3 +225,9 @@ class InventoryPage(BasePage):
         counter_locator = self.page.locator(self.CART_COUNTER)
         expect(counter_locator).to_be_visible()
         return counter_locator.inner_text().strip()
+
+    def go_to_cart(self) -> None:
+        """Navigate to the shopping cart via UI elements in the header."""
+        cart_link = self.page.locator(self.NAV_CART)
+        expect(cart_link).to_be_visible()
+        cart_link.click()

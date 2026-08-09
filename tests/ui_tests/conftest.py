@@ -11,24 +11,14 @@ from config.settings import settings
 
 
 @pytest.fixture(scope="session")
-def browser_type_launch_args(browser_type_launch_args: dict) -> dict:
-    """Override browser launch arguments based on framework settings.
-
-    Educational Scaffolding:
-        This pytest-playwright hook allows us to dynamically control execution properties
-        (like headless mode) directly from our Pydantic settings module rather than
-        relying entirely on CLI parameters.
-
-    Args:
-        browser_type_launch_args: The default launch arguments.
-
-    Returns:
-        dict: The updated launch arguments.
-    """
+def browser_type_launch_args(browser_type_launch_args: dict, request: pytest.FixtureRequest) -> dict:
+    """Override browser launch arguments, prioritizing CLI flags over settings."""
+    is_headed_cli = request.config.getoption("--headed") if request.config.inicfg else False
+    
     return {
         **browser_type_launch_args,
-        "headless": settings.HEADLESS_MODE,
-    }
+        "headless": False if is_headed_cli else settings.HEADLESS_MODE,
+    }   
 
 
 @pytest.fixture(scope="function")
