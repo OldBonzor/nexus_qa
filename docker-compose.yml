@@ -1,0 +1,20 @@
+services:
+  nexus_qa_runner:
+    # Build container from the Dockerfile in current directory
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
+    # Custom container name for easier tracking
+    container_name: nexus_qa_tests
+    
+    # Pass environment variables from local .env file into the container
+    env_file:
+      - .env
+
+    # Mount local directories to preserve generated test artifacts (Allure reports)
+    volumes:
+      - ./allure-results:/app/allure-results
+
+    # Command executed when the container starts
+    command: pytest --alluredir=allure-results

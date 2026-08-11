@@ -11,9 +11,20 @@ sensitive payloads/headers, and centralized response validation.
 import abc
 import json as json_lib
 import logging
+import re
+import allure
 from typing import Any, Optional
 import requests
 from config.settings import settings
+
+# Pre-compiled regex patterns for raw text/non-JSON sensitive data masking
+_SENSITIVE_PATTERNS = [
+    (re.compile(r'("authorization"\s*:\s*")[^"]+(")', re.IGNORECASE), r'\1[MASKED]\2'),
+    (re.compile(r'(bearer\s+)[a-zA-Z0-9_\-\.\~]+', re.IGNORECASE), r'\1[MASKED]'),
+    (re.compile(r'("token"\s*:\s*")[^"]+(")', re.IGNORECASE), r'\1[MASKED]\2'),
+    (re.compile(r'("password"\s*:\s*")[^"]+(")', re.IGNORECASE), r'\1[MASKED]\2'),
+    (re.compile(r'("secret"\s*:\s*")[^"]+(")', re.IGNORECASE), r'\1[MASKED]\2'),
+]
 
 # Configure module-level logger
 logger = logging.getLogger(__name__)
@@ -254,6 +265,24 @@ class BaseClient(AbstractAPIClient):
             
         return data
 
+    def _sanitize_string_data(self, text: str) -> str:
+        """Sanitize raw string data to prevent sensitive details from leaking."""
+        if not text:
+            return text
+
+        try:
+            parsed = json_lib.loads(text)
+            sanitized = self._sanitize_data(parsed)
+            return json_lib.dumps(sanitized, indent=2)
+        except Exception:
+            pass
+
+        sanitized = text
+        for pattern, replacement in _SENSITIVE_PATTERNS:
+            sanitized = pattern.sub(replacement, sanitized)
+
+        return sanitized
+
     def _execute_request(
         self,
         method: str,
@@ -264,7 +293,7 @@ class BaseClient(AbstractAPIClient):
         """Centralized request execution engine.
 
         Handles URL resolution, timeout enforcement, sensitive data sanitization 
-        for logging, execution, logging of lifecycle events, and automated status code assertions.
+        for logging, execution, Allure instrumentation, event logging, and automated status code assertions.
 
         Args:
             method: HTTP method (e.g., 'GET', 'POST', 'PUT', 'DELETE').
@@ -303,7 +332,69 @@ class BaseClient(AbstractAPIClient):
             # 5. Execute actual request
             response = self.session.request(method=method, url=resolved_url, **kwargs)
             
-            # 6. Logging successful response metadata
+            # 6. Instrument with Allure Step using actual response status code
+            step_title = f"API Request: [{method.upper()}] {resolved_url} -> Status {response.status_code}"
+            with allure.step(step_title):
+                # Attach Request Headers
+                allure.attach(
+                    json_lib.dumps(self._sanitize_data(kwargs.get("headers") or dict(self.session.headers)), indent=2),
+                    name="Request Headers",
+                    attachment_type=allure.attachment_type.JSON,
+                )
+                
+                # Attach Request Body
+                if kwargs.get("json") is not None:
+                    allure.attach(
+                        json_lib.dumps(self._sanitize_data(kwargs["json"]), indent=2),
+                        name="Request Body (JSON)",
+                        attachment_type=allure.attachment_type.JSON,
+                    )
+                elif kwargs.get("data") is not None:
+                    req_data = kwargs["data"]
+                    if isinstance(req_data, (dict, list)):
+                        req_data = self._sanitize_data(req_data)
+                        allure.attach(
+                            json_lib.dumps(req_data, indent=2),
+                            name="Request Body (Form Data)",
+                            attachment_type=allure.attachment_type.JSON,
+                        )
+                    else:
+                        sanitized_req_str = self._sanitize_string_data(str(req_data))
+                        allure.attach(
+                            sanitized_req_str,
+                            name="Request Body (Raw)",
+                            attachment_type=allure.attachment_type.TEXT,
+                        )
+
+                # Attach Response Headers
+                allure.attach(
+                    json_lib.dumps(dict(response.headers), indent=2),
+                    name="Response Headers",
+                    attachment_type=allure.attachment_type.JSON,
+                )
+
+                # Attach Response Body
+                try:
+                    res_json = response.json()
+                    sanitized_res = self._sanitize_data(res_json)
+                    allure.attach(
+                        json_lib.dumps(sanitized_res, indent=2),
+                        name="Response Body (JSON)",
+                        attachment_type=allure.attachment_type.JSON,
+                    )
+                except Exception:
+                    raw_text = response.text or ""
+                    sanitized_text = self._sanitize_string_data(raw_text)
+                    if len(sanitized_text) > 5000:
+                        sanitized_text = sanitized_text[:5000] + "\n\n[... Truncated after 5000 characters ...]"
+                    
+                    allure.attach(
+                        sanitized_text,
+                        name="Response Body (Raw)",
+                        attachment_type=allure.attachment_type.TEXT,
+                    )
+
+            # 7. Logging successful response metadata
             logger.info(
                 "Received HTTP Response: [%s] %s - Status Code: %d - Elapsed: %s",
                 method,
@@ -312,7 +403,7 @@ class BaseClient(AbstractAPIClient):
                 response.elapsed,
             )
 
-            # 7. Automatically assert status code if specified
+            # 8. Automatically assert status code if specified
             if expected_status is not None:
                 self.assert_status_code(response, expected_status)
 

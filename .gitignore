@@ -15,8 +15,9 @@ __pycache__/
 *$py.class
 .pytest_cache/
 
-# === Test Artifacts, Reports & Logs ===
+# === Test Artifacts, Debug files, Reports & Logs ===
 *.log
+debug_*
 .coverage
 htmlcov/
 coverage.xml
