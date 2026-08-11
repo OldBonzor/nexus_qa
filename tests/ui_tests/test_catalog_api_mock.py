@@ -28,7 +28,7 @@ class TestCatalogResilienceUI:
 
         try:
             # --- Act ---
-            inventory_page.open()
+            inventory_page.open(expected_status=500)
 
             # --- Assert ---
             expect(ui_page.locator("app-root")).to_be_visible()

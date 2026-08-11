@@ -40,9 +40,17 @@ class InventoryPage(BasePage):
         """
         return f"//label[contains(text(), '{category_name}')]"
 
-    def open(self) -> None:
-        """Navigate to the main storefront catalog page."""
-        self.navigate("/")
+    def open(self, expected_status: int = 200) -> None:
+        """Navigate to the main storefront catalog page and wait for product data response.
+
+        Args:
+            expected_status (int): Expected HTTP response status code for products request (default: 200).
+        """
+        with self.page.expect_response(lambda res: "/products" in res.url and res.status == expected_status) as response_info:
+            self.navigate("/")
+        
+        response = response_info.value
+        assert response.status == expected_status, f"Catalog failed with status: {response.status}, expected {expected_status}"
 
     def search_product(self, query: str) -> None:
         """Type a search query into the search input field and submit,

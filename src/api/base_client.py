@@ -3,6 +3,9 @@
 This module defines the strict contract and structural skeleton for HTTP clients.
 It enforces standard HTTP methods (GET, POST, PUT, DELETE) using an Abstract Base Class
 and provides a concrete BaseClient utilizing the `requests` library.
+
+Integrated with Allure reporting for automatic step instrumentation, sanitization of
+sensitive payloads/headers, and centralized response validation.
 """
 
 import abc
@@ -260,18 +263,13 @@ class BaseClient(AbstractAPIClient):
     ) -> requests.Response:
         """Centralized request execution engine.
 
-        This private method handles:
-        1. Injecting default timeouts if not explicitly provided.
-        2. Resolving URL paths.
-        3. Sanitizing sensitive request data (headers, params, json, etc.) for logging.
-        4. Comprehensive Logging (Requests/Responses metadata).
-        5. Centralized exception handling and wrapping failures in APIClientError.
-        6. Centralized status code assertions if expected_status is specified.
+        Handles URL resolution, timeout enforcement, sensitive data sanitization 
+        for logging, execution, logging of lifecycle events, and automated status code assertions.
 
         Args:
-            method: HTTP method (e.g., 'GET', 'POST').
-            url: Endpoint or full URL.
-            expected_status: Expected status code for auto-assertion.
+            method: HTTP method (e.g., 'GET', 'POST', 'PUT', 'DELETE').
+            url: Endpoint path or full URL.
+            expected_status: Expected HTTP status code for auto-assertion.
             **kwargs: HTTP request arguments (headers, parameters, body, timeout, etc.).
 
         Returns:
@@ -279,7 +277,7 @@ class BaseClient(AbstractAPIClient):
 
         Raises:
             APIClientError: If the request fails due to a network error or timeout.
-            AssertionError: If expected_status is set and status code mismatch occurs.
+            AssertionError: If expected_status is set and a status code mismatch occurs.
         """
         # 1. Resolve URL
         resolved_url = self._resolve_url(url)
@@ -321,7 +319,20 @@ class BaseClient(AbstractAPIClient):
             return response
             
         except requests.exceptions.RequestException as exc:
-            # 8. Intercept errors, log nicely with stack info, and raise custom exception
+            # Document failed request in Allure on network level failure
+            with allure.step(f"API Request FAILED: [{method.upper()}] {resolved_url}"):
+                allure.attach(
+                    json_lib.dumps(self._sanitize_data(kwargs.get("headers") or dict(self.session.headers)), indent=2),
+                    name="Request Headers",
+                    attachment_type=allure.attachment_type.JSON,
+                )
+                if kwargs.get("json") is not None:
+                    allure.attach(
+                        json_lib.dumps(self._sanitize_data(kwargs["json"]), indent=2),
+                        name="Request Body (JSON)",
+                        attachment_type=allure.attachment_type.JSON,
+                    )
+
             error_msg = f"{type(exc).__name__}: {str(exc)}"
             logger.error(
                 "HTTP Request Failed: [%s] %s - Reason: %s",

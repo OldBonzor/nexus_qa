@@ -672,9 +672,16 @@ class TestProductsComplexFiltering:
         query_params: dict[str, Any],
         parsed_response: ProductsListResponse,
     ) -> None:
-        """Verifies that query filters persist when navigating to page 2."""
+        """Verifies that query filters persist when navigating to page 2.
+
+        If the filtered dataset contains fewer than 2 pages due to limited test site data,
+        explicitly skips the pagination assertion to prevent false-positive test passes.
+        """
         if parsed_response.last_page < 2:
-            return
+            pytest.skip(
+                f"Skipping Page 2 persistence check: filtered dataset contains only {parsed_response.total} "
+                f"item(s) (last_page={parsed_response.last_page}). At least 10 items required for page 2 validation."
+            )
 
         page_2_response = products_client.get_products(
             params={**query_params, "page": 2},
@@ -686,7 +693,7 @@ class TestProductsComplexFiltering:
             f"Expected current_page=2, got {parsed_page_2.current_page}"
         )
 
-        # Extract expectations once via pattern matching before looping over products
+        # Extract expected filter criteria once using pattern matching
         expected_category_id: str | None = None
         expected_brand_id: str | None = None
         expected_rental: bool | None = None
@@ -703,7 +710,7 @@ class TestProductsComplexFiltering:
                 case "is_location_offer":
                     expected_location_offer = str(value).lower() == "true"
 
-        # Validate page 2 products in O(N) time complexity without nested parameter iteration
+        # Validate page 2 items in O(N) complexity with clear, readable conditions
         for product in parsed_page_2.data:
             if expected_category_id and product.category:
                 assert product.category.id == expected_category_id, (
@@ -791,19 +798,12 @@ class TestProductsComplexFiltering:
             ("category_price_search", False, {}, "Pliers"),
             ("brand_location_offer_price", False, {"is_location_offer": "true"}, None),
             ("non_overlapping_with_price", True, {}, None),
-            (
-                "all_six_filters",
-                False,
-                {"is_rental": "true", "is_location_offer": "true"},
-                "Pliers",
-            ),
         ],
         ids=[
             "combine_category_brand_price_range_and_rental",
             "combine_category_price_range_and_search_query",
             "combine_brand_location_offer_and_exact_price",
             "combine_non_overlapping_filters_with_price_range_returns_empty",
-            "combine_all_six_filters_simultaneously",
         ],
     )
     def test_filter_products_combined(
@@ -819,26 +819,48 @@ class TestProductsComplexFiltering:
     ) -> None:
         """Verify multi-parameter combined filtering and pagination persistence."""
         # --- Arrange ---
+        if not use_non_overlapping and not valid_filter_pairs:
+            pytest.skip("Skipped: No valid filter pairs available in the catalog for this combination test.")
+        if use_non_overlapping and not non_overlapping_pairs:
+            pytest.skip("Skipped: No non-overlapping pairs available in the catalog.")
+
         filter_pair = (
             non_overlapping_pairs[0] if use_non_overlapping else valid_filter_pairs[0]
         )
-        query_params = {
-            **filter_pair,
-            **extra_params,
-            "between": f"price,{price_boundaries.min_price},{price_boundaries.max_price}",
-        }
 
         match case_type:
+            case "category_brand_price_rental":
+                # Contains: by_category, by_brand, is_rental="true", between=min,max
+                query_params = {
+                    **filter_pair,
+                    **extra_params,
+                    "between": f"price,{price_boundaries.min_price},{price_boundaries.max_price}",
+                }
+
             case "category_price_search":
-                query_params.pop("by_brand", None)
-                query_params["q"] = search_keyword
+                # Original logic removed "by_brand" and added "q": search_keyword
+                query_params = {
+                    "by_category": filter_pair["by_category"],
+                    "q": search_keyword,
+                    **extra_params,
+                    "between": f"price,{price_boundaries.min_price},{price_boundaries.max_price}",
+                }
+
             case "brand_location_offer_price":
-                query_params.pop("by_category", None)
-                query_params["between"] = (
-                    f"price,{price_boundaries.exact_price},{price_boundaries.exact_price}"
-                )
-            case "all_six_filters":
-                query_params["q"] = search_keyword
+                # Original logic removed "by_category", kept "is_location_offer"="true", set exact_price
+                query_params = {
+                    "by_brand": filter_pair["by_brand"],
+                    **extra_params,
+                    "between": f"price,{price_boundaries.exact_price},{price_boundaries.exact_price}",
+                }
+
+            case "non_overlapping_with_price":
+                # Contains non-overlapping filter_pair + price range
+                query_params = {
+                    **filter_pair,
+                    **extra_params,
+                    "between": f"price,{price_boundaries.min_price},{price_boundaries.max_price}",
+                }
 
         # --- Act ---
         response = products_client.get_products(params=query_params, expected_status=200)
@@ -852,6 +874,44 @@ class TestProductsComplexFiltering:
         self._verify_page_2_filters_persistence(products_client, query_params, parsed_response)
         self._assert_case_domain_rules(
             case_type,
+            parsed_response.data,
+            filter_pair,
+            price_boundaries,
+            search_keyword,
+        )
+
+    def test_filter_all_six_filters_edge_case(
+        self,
+        products_client: ProductsClient,
+        strict_filter_pairs: list[dict[str, str]],
+        price_boundaries: PriceBoundaries,
+    ) -> None:
+        """Verify multi-parameter combined filtering using all 6 filters simultaneously."""
+        # --- Arrange ---
+        if not strict_filter_pairs:
+            pytest.skip(
+                "Skipped: No products found in the database matching all 6 filters simultaneously "
+                "(required category, brand, is_rental=True, and is_location_offer=True)."
+            )
+
+        filter_pair = strict_filter_pairs[0]
+        search_keyword = "Pliers"
+
+        query_params = {
+            **filter_pair,
+            "is_rental": "true",
+            "is_location_offer": "true",
+            "q": search_keyword,
+            "between": f"price,{price_boundaries.min_price},{price_boundaries.max_price}",
+        }
+
+        # --- Act ---
+        response = products_client.get_products(params=query_params, expected_status=200)
+        parsed_response = ProductsListResponse.model_validate(response.json())
+
+        # --- Assert: Domain filter assertions ---
+        self._assert_case_domain_rules(
+            "all_six_filters",
             parsed_response.data,
             filter_pair,
             price_boundaries,

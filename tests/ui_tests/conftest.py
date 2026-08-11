@@ -4,10 +4,44 @@ This module provides common UI test fixtures, leveraging Playwright to manage
 browser context and page lifecycles. It integrates with Pydantic settings.
 """
 
-from typing import Generator
+from typing import Any, Dict, Generator
 import pytest
 from playwright.sync_api import Browser, BrowserContext, Page
 from config.settings import settings
+
+@pytest.fixture(scope="session")
+def browser_context_args(browser_context_args: Dict[str, Any]) -> Dict[str, Any]:
+    """Force full screen resolution (1920x1080) for headless browser contexts."""
+    return {
+        **browser_context_args,
+        "viewport": {
+            "width": 1920,
+            "height": 1080,
+        },
+    }
+
+@pytest.fixture(scope="function")
+def context(browser: Browser, browser_context_args: dict) -> Generator[BrowserContext, None, None]:
+    """Override standard context fixture to initialize Playwright tracing on startup.
+
+    Educational Scaffolding:
+        This fixture overrides the default pytest-playwright `context` fixture,
+        automatically starts tracing with screenshots, snapshots, and sources,
+        and safely closes the context on teardown to prevent resource leakage.
+
+    Args:
+        browser: The active Playwright Browser instance.
+        browser_context_args: Base arguments configured for the context.
+
+    Yields:
+        BrowserContext: The tracing-enabled context.
+    """
+    context = browser.new_context(**browser_context_args)
+    context.tracing.start(screenshots=True, snapshots=True, sources=True)
+    yield context
+    context.close()
+
+
 
 
 @pytest.fixture(scope="session")
