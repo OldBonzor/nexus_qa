@@ -1,14 +1,18 @@
 """UI test suite for catalog inventory, sorting, filtering, and guest cart interactions."""
 
 import pytest
+import allure
 from playwright.sync_api import Page, expect
 from src.ui.pages.inventory_page import InventoryPage
 
 
+@allure.epic("UI Storefront")
+@allure.feature("Catalog Inventory")
 @pytest.mark.ui
 class TestCatalogAndInventoryUI:
     """Test class covering catalog storefront operations."""
 
+    @allure.story("Catalog Display")
     @pytest.mark.smoke
     def test_catalog_display_products(self, ui_page: Page) -> None:
         """Verify that products are correctly displayed in the catalog grid
@@ -27,6 +31,7 @@ class TestCatalogAndInventoryUI:
             expect(card.locator(InventoryPage.PRODUCT_IMAGE)).to_be_visible()
             expect(card.locator(InventoryPage.PRODUCT_PRICE)).to_be_visible()
 
+    @allure.story("Product Search")
     @pytest.mark.smoke
     @pytest.mark.parametrize(
         (
@@ -64,6 +69,7 @@ class TestCatalogAndInventoryUI:
             f"Actual products: {product_names}"
         )
 
+    @allure.story("Product Search")
     def test_search_product_no_results(self, ui_page: Page) -> None:
         """Verify that searching for a non-existent product results in an empty catalog grid."""
         # --- Arrange ---
@@ -81,6 +87,8 @@ class TestCatalogAndInventoryUI:
             f"but found: {empty_product_names}"
         )
 
+    @allure.story("Catalog Sorting")
+    @allure.title("Verify sorting by criteria: {sort_option}")
     @pytest.mark.parametrize(
         ("sort_option", "descending"),
         [
@@ -128,6 +136,7 @@ class TestCatalogAndInventoryUI:
             f"(descending={descending}). Actual values: {values}"
         )
 
+    @allure.story("Catalog Filtering")
     @pytest.mark.parametrize(
         "category, subcategory, expected_keywords",
         [
@@ -180,6 +189,7 @@ class TestCatalogAndInventoryUI:
             f"Actual products: {product_names}"
         )
 
+    @allure.story("Product Details")
     @pytest.mark.smoke
     def test_product_detail_page_navigation(self, ui_page: Page):
         """

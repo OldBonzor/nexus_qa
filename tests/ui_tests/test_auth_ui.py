@@ -1,15 +1,19 @@
 """UI test suite for authorization, security, and session management."""
 
 import pytest
+import allure
 from playwright.sync_api import Page, expect
 from config.settings import settings
 from src.ui.pages.login_page import LoginPage
 
 
+@allure.epic("UI Storefront")
+@allure.feature("UI Authentication")
 @pytest.mark.ui
 class TestAuthAndSecurityUI:
     """Test class covering authentication and security scenarios."""
 
+    @allure.story("User Login UI")
     @pytest.mark.xfail(
         reason="Frontend Angular router fails to update route and view properly after successful login API response on test stand."
     )
@@ -25,6 +29,8 @@ class TestAuthAndSecurityUI:
         # Assert
         login_page.verify_successful_login()
 
+    @allure.story("User Login UI")
+    @allure.title("Login with invalid credentials: {username}/{password}")
     def test_login_with_invalid_credentials(self, ui_page: Page) -> None:
         """Negative login scenario with an incorrect password."""
         # Arrange
@@ -39,6 +45,7 @@ class TestAuthAndSecurityUI:
         assert "Invalid email or password" in error_text or "Unauthorized" in error_text, \
             f"Expected error message not found. Actual text: '{error_text}'"
 
+    @allure.story("Security Access Control")
     def test_unauthorized_access_redirection(self, ui_page: Page) -> None:
         """Security role model check (direct URL access without authentication)."""
         # Arrange
@@ -51,6 +58,7 @@ class TestAuthAndSecurityUI:
         # Assert
         expect(ui_page).to_have_url(expected_login_url)
 
+    @allure.story("Session Management")
     @pytest.mark.xfail(
         reason="Frontend Angular router fails to update route and view properly after successful login API response on test stand."
     )

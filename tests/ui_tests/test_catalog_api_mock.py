@@ -1,14 +1,18 @@
 """UI tests verifying application resilience and error handling via network mocking."""
 
 import pytest
+import allure
 from playwright.sync_api import Page, expect
 from src.ui.pages.inventory_page import InventoryPage
 
 
+@allure.epic("UI Storefront")
+@allure.feature("Resilience & Error Handling")
 @pytest.mark.ui
 class TestCatalogResilienceUI:
     """Test suite for catalog error handling and network failure resilience."""
 
+    @allure.story("API Failure Handling")
     def test_catalog_handling_on_api_failure(self, ui_page: Page) -> None:
         """Verify that the UI handles a 500 Internal Server Error from the products API
         gracefully without crashing or hanging indefinitely.

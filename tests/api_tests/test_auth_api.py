@@ -1,13 +1,17 @@
 """API tests for user authentication and protected endpoints."""
 
 import pytest
+import allure
 from src.api.base_client import BaseClient
 from src.api.models.auth_models import LoginRequest, LoginResponse
 
 
+@allure.epic("API Backend")
+@allure.feature("Authentication & Security")
 class TestAuthAndProtectedEndpoints:
     """Test suite for authentication workflows and protected resource access."""
 
+    @allure.story("User Login")
     def test_successful_login(self, api_client: BaseClient) -> None:
         """Verify successful user authentication with valid credentials."""
         # --- Arrange & Act ---
@@ -26,6 +30,8 @@ class TestAuthAndProtectedEndpoints:
         assert token_data.access_token is not None
         assert token_data.token_type.lower() == "bearer"
 
+    @allure.story("User Login")
+    @allure.title("Unsuccessful login attempt for email: '{email}'")
     @pytest.mark.parametrize(
         "email, password",
         [
@@ -33,7 +39,7 @@ class TestAuthAndProtectedEndpoints:
             ("admin@practicesoftwaretesting.com", "wrong_password_123"),  # Invalid password
             ("invalid_user@practicesoftwaretesting.com", "wrong_pass_123"),  # Both invalid
         ],
-        ids=["invalid_email", "invalid_password", "both_invalid"],
+        ids=["invalid_email", "invalid_password", "invalid_email_and_password"],
     )
     def test_unsuccessful_login(
         self,
@@ -54,6 +60,8 @@ class TestAuthAndProtectedEndpoints:
         # --- Assert ---
         assert response.status_code == 401, f"Expected status 401, got {response.status_code}"
 
+    @allure.story("Protected Endpoints")
+    @allure.title("Access protected endpoint '{endpoint}' using Bearer token")
     @pytest.mark.parametrize(
         "endpoint",
         [
@@ -82,6 +90,7 @@ class TestAuthAndProtectedEndpoints:
         data = response.json()
         assert isinstance(data, (dict, list)), "Response must be a dictionary or a list"
 
+    @allure.story("Protected Endpoints")
     def test_protected_endpoint_unauthorized(self, api_client: BaseClient) -> None:
         """Verify that protected endpoints reject requests without a token."""
         # --- Act ---
@@ -90,6 +99,8 @@ class TestAuthAndProtectedEndpoints:
         # --- Assert ---
         assert response.status_code == 401, f"Expected status 401, got {response.status_code}"
 
+    @allure.story("Protected Endpoints")
+    @allure.title("Reject access for invalid authentication token: '{invalid_auth_header}'")
     @pytest.mark.parametrize(
         "invalid_auth_header",
         [

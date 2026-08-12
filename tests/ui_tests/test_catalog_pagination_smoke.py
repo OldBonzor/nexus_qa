@@ -1,15 +1,19 @@
 """Smoke test suite for catalog pagination UI components."""
 
 import pytest
+import allure
 from playwright.sync_api import Page, expect
 from src.ui.pages.inventory_page import InventoryPage
 
 
+@allure.epic("UI Storefront")
+@allure.feature("Catalog Pagination")
 @pytest.mark.ui
 @pytest.mark.smoke
 class TestCatalogPaginationSmoke:
     """Smoke tests verifying that pagination controls render correctly in the UI."""
 
+    @allure.story("Pagination Controls")
     def test_pagination_controls_visibility(self, ui_page: Page) -> None:
         """Verify that pagination controls are present and interactive.
         

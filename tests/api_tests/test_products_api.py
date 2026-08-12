@@ -1,8 +1,9 @@
 """API tests for the products endpoints."""
 
+import pytest
+import allure
 from math import ceil
 from typing import Any, Optional
-import pytest
 from src.api.models.product_models import (
     PriceBoundaries,
     ProductItem,
@@ -11,7 +12,10 @@ from src.api.models.product_models import (
 from src.api.products_client import ProductsClient
 
 
+@allure.epic("API Backend")
+@allure.feature("Products Management")
 class TestProductsList:
+    @allure.story("Get Products List")
     def test_get_products_list(self, products_client: ProductsClient) -> None:
         """Test retrieving list of products and response contract validity."""
         # --- Arrange & Act ---
@@ -27,6 +31,7 @@ class TestProductsList:
         assert len(products_data.data) > 0, "Expected products list must not be empty"
         assert products_data.data[0].price > 0, "Expected product price must be greater than 0"
 
+    @allure.story("Pagination")
     @pytest.mark.parametrize("page", [1, 2], ids=["first_page", "second_page"])
     def test_get_products_pagination(self, products_client: ProductsClient, page: int):
         """Verify pagination functionality: page navigation and and current page response.
@@ -59,6 +64,7 @@ class TestProductsList:
             f"Expected page {page} to contain product items"
         )
 
+    @allure.story("Pagination")
     def test_get_products_last_page(self, products_client: ProductsClient):
         """Guarantees testing the backend last page calculation and 
         the exact item count on the final page.
@@ -110,6 +116,7 @@ class TestProductsList:
             f"but got {len(last_page_data.data)} items"
         )
 
+    @allure.story("Pagination")
     def test_get_products_pagination_invalid(self, products_client: ProductsClient):
         """Verify that requesting a page beyond last_page returns an empty list."""
         # --- Arrange ---
@@ -133,8 +140,11 @@ class TestProductsList:
         )
 
 
+@allure.epic("API Backend")
+@allure.feature("Product Details")
 class TestProductDetails:
     """Suite for testing product details endpoint (/products/{id})."""
+    @allure.story("Get Product By ID")
     def test_get_product_by_id(self, products_client: ProductsClient):
         """Verify that product requested using valid ID returns 200 code with product data."""
         # --- Arrange ---
@@ -175,6 +185,7 @@ class TestProductDetails:
         ],
         ids=["non_existing_id", "only_spacebars_in_id", "only_special_symbols_in_id"],
         )
+    @allure.story("Get Product By ID")
     def test_get_product_by_id_not_found(
         self, 
         products_client: ProductsClient, 
@@ -199,7 +210,10 @@ class TestProductDetails:
             )
 
 
+@allure.epic("API Backend")
+@allure.feature("Product Search")
 class TestProductsSearch:
+    @allure.story("Search Products")
     @pytest.mark.parametrize("queries, expected_keyword", [
         (["hammer", "HAMMER", "HaMmEr"], "hammer"),
         (["pliers", "PLIERS", "PlIeRs"], "pliers")
@@ -240,6 +254,7 @@ class TestProductsSearch:
                 f" but not found in invalid items {invalid_items}"
                 )
 
+    @allure.story("Search Products")
     @pytest.mark.parametrize(
         "invalid_name", 
     [
@@ -270,12 +285,16 @@ class TestProductsSearch:
         )
 
 
+@allure.epic("API Backend")
+@allure.feature("Product Filtering")
 class TestProductsFilter:
     """Suite for testing product list filtering by category and brand."""
     @pytest.mark.parametrize(
         "filter_mode", ["category_only", "brand_only", "category_and_brand"],
         ids=["category_only", "brand_only", "combined_category_and_brand"],
     )
+    @allure.story("Filter by Category and Brand")
+    @allure.title("Filtering products: Category='{category}', Brand='{brand}'")
     def test_filter_products_by_category_by_brand_mix(
         self, 
         products_client: ProductsClient, 
@@ -319,6 +338,7 @@ class TestProductsFilter:
                         f"Expected brand ID {params['by_brand']}, got {product.brand.id}"
                     )
     
+    @allure.story("Filter by Category and Brand")
     @pytest.mark.parametrize(
         "filter_mode",
         [
@@ -368,6 +388,7 @@ class TestProductsFilter:
         assert products_data.total == 0, f"Expected empty list for params {params}, got {products_data.data}"
         assert len(products_data.data) == 0, f"Expected total = 0 for params {params}, got {products_data.total}"
 
+    @allure.story("Filter by Category and Brand")
     def test_filter_products_by_non_overlapping_category_and_brand_returns_empty(
         self,
         products_client: ProductsClient, 
@@ -395,11 +416,15 @@ class TestProductsFilter:
             )
 
 
+@allure.epic("API Backend")
+@allure.feature("Price Filtering")
 class TestProductsPriceFilter:
     """Suite for testing product price filtering capabilities via API."""
 
+    @allure.story("Price Range Validation")
+    @allure.title("{test_id}")
     @pytest.mark.parametrize(
-        "get_params_func, validation_type",
+        "get_params_func, validation_type, test_id",
         [
             # ==============================================================================
             # Group 1: exact_bounds (Exact boundaries)
@@ -407,36 +432,36 @@ class TestProductsPriceFilter:
             pytest.param(
                 lambda b: {"between": f"price,{b.exact_price},{b.exact_price}"},
                 "exact_bounds",
-                id="1. Exact Match (min==max)",
+                "1. Exact Match (min==max)",
             ),
             pytest.param(
                 lambda b: {"between": f"price,{b.min_price},{b.exact_price}"},
                 "exact_bounds",
-                id="2. Standard Valid Range (min < max via exact_price)",
+                "2. Standard Valid Range (min < max via exact_price)",
             ),
             pytest.param(
                 lambda b: {"between": f"price,{b.min_price:.2f},{b.exact_price:.2f}"},
                 "exact_bounds",
-                id="3. Cents Precision (.2f)",
+                "3. Cents Precision (.2f)",
             ),
             pytest.param(
                 lambda b: {"between": f"price,{b.min_price + 0.123456:.6f},{b.exact_price + 0.987654:.6f}"},
                 "exact_bounds",
-                id="4. Excessive Float Precision (.6f)",
+                "4. Excessive Float Precision (.6f)",
             ),
             pytest.param(
                 lambda b: {"between": f"price,{b.exact_price},"},
                 "exact_bounds",
+                "5. Only min_price",
                 marks=pytest.mark.xfail(
                     reason="BUG: Backend fails to parse trailing comma in 'price,min,' and returns empty list",
                     strict=True,
                 ),
-                id="5. Only min_price",
             ),
             pytest.param(
                 lambda b: {"between": f"price,,{b.exact_price}"},
                 "exact_bounds",
-                id="6. Only max_price",
+                "6. Only max_price",
             ),
             # ==============================================================================
             # Group 2: full_coverage (Full DB coverage)
@@ -444,7 +469,7 @@ class TestProductsPriceFilter:
             pytest.param(
                 lambda b: {"between": f"price,{b.min_price},{b.max_price}"},
                 "full_coverage",
-                id="7. Full DB Price Coverage",
+                "7. Full DB Price Coverage",
             ),
             # ==============================================================================
             # Group 3: all_items (Filter ignored)
@@ -452,7 +477,7 @@ class TestProductsPriceFilter:
             pytest.param(
                 lambda b: {},
                 "all_items",
-                id="8. Filter Ignored (no between param)",
+                "8. Filter Ignored (no between param)",
             ),
             # ==============================================================================
             # Group 4: empty_result (Empty result)
@@ -460,42 +485,43 @@ class TestProductsPriceFilter:
             pytest.param(
                 lambda b: {"between": "price,,"},
                 "empty_result",
-                id="9. Empty Result (price,,)",
+                "9. Empty Result (price,,)",
             ),
             pytest.param(
                 lambda b: {"between": "price,,null"},
                 "empty_result",
-                id="10. Empty Result (price,,null)",
+                "10. Empty Result (price,,null)",
             ),
             pytest.param(
                 lambda b: {"between": "price,null,"},
                 "empty_result",
-                id="11. Empty Result (price,null,)",
+                "11. Empty Result (price,null,)",
             ),
             pytest.param(
                 lambda b: {"between": "price,null,null"},
                 "empty_result",
-                id="12. Empty Result (price,null,null)",
+                "12. Empty Result (price,null,null)",
             ),
             pytest.param(
                 lambda b: {"between": f"price,{b.max_price + 10000.00},{b.max_price + 20000.00}"},
                 "empty_result",
-                id="13. Empty Result (Out of Bounds: +10k..+20k)",
+                "13. Empty Result (Out of Bounds: +10k..+20k)",
             ),
             pytest.param(
                 lambda b: {"between": "price,0,0"},
                 "empty_result",
-                id="14. Empty Result (Zero Price Range: 0..0)",
+                "14. Empty Result (Zero Price Range: 0..0)",
             ),
         ],
     )
     def test_filter_products_by_price_range(
         self,
-        products_client: ProductsClient,  # <-- Добавлено : ProductsClient
+        products_client: ProductsClient,
         price_boundaries: PriceBoundaries,
         raw_products_data: list[dict[str, Any]],
         get_params_func: Any,
         validation_type: str,
+        test_id: str,
     ):
         """Validates price range filtering logic, dynamic pagination, and boundary conditions."""
         # --- Arrange ---
@@ -613,6 +639,8 @@ class TestProductsPriceFilter:
 
         return all_items, total_items
 
+    @allure.story("Invalid Price Filters Negative")
+    @allure.title("Filter by price range: {id}")
     @pytest.mark.parametrize("invalid_filter, description", [
         ("price,100,10", "Inverted range (min > max)"),
         ("price,-50,100", "Negative min price"),
@@ -663,6 +691,8 @@ class TestProductsPriceFilter:
                 pytest.fail(f"Unexpected HTTP status code {response.status_code} for [{description}]")
 
 
+@allure.epic("API Backend")
+@allure.feature("Complex Filtering")
 class TestProductsComplexFiltering:
     """Integration test suite verifying complex multi-parameter product filter combinations."""
 
@@ -791,6 +821,7 @@ class TestProductsComplexFiltering:
                     assert p.is_rental is True
                     assert p.is_location_offer is True
 
+    @allure.story("Multi-parameter Filtering")
     @pytest.mark.parametrize(
         "case_type, use_non_overlapping, extra_params, search_keyword",
         [
@@ -880,6 +911,7 @@ class TestProductsComplexFiltering:
             search_keyword,
         )
 
+    @allure.story("Multi-parameter Filtering")
     def test_filter_all_six_filters_edge_case(
         self,
         products_client: ProductsClient,
@@ -919,9 +951,12 @@ class TestProductsComplexFiltering:
         )
 
 
+@allure.epic("API Backend")
+@allure.feature("Filtering Negative")
 class TestProductsFilteringNegative:
     """Negative test suite verifying product filter tolerance to malformed query parameters."""
 
+    @allure.story("Malformed Filter Parameters")
     @pytest.mark.parametrize(
         "query_params",
         [
@@ -949,6 +984,7 @@ class TestProductsFilteringNegative:
         )
         assert parsed_response.total > 0
 
+    @allure.story("Malformed Filter Parameters")
     @pytest.mark.parametrize(
         "raw_params, mix_valid_data",
         [
@@ -997,6 +1033,8 @@ class TestProductsFilteringNegative:
         assert len(parsed_response.data) == 0
 
 
+@allure.epic("API Backend")
+@allure.feature("Product Sorting")
 class TestProductsSortingPositive:
     """Positive test suite verifying product list sorting by name and price in both directions."""
 
@@ -1047,6 +1085,7 @@ class TestProductsSortingPositive:
             "sort_by_name_descending",
         ],
     )
+    @allure.story("Sorting Positive")
     def test_get_products_sorting(
         self,
         products_client: ProductsClient,
@@ -1068,9 +1107,12 @@ class TestProductsSortingPositive:
         self._assert_is_sorted(parsed_response.data, sort_field, direction)
 
 
+@allure.epic("API Backend")
+@allure.feature("Product Sorting")
 class TestProductsSortingNegative:
     """Negative test suite verifying API fallback behavior when invalid sorting parameters are provided."""
 
+    @allure.story("Sorting Negative")
     @pytest.mark.parametrize(
         "sort_param",
         [
@@ -1117,9 +1159,12 @@ class TestProductsSortingNegative:
         )
 
 
+@allure.epic("API Backend")
+@allure.feature("Security & Sanitization")
 class TestProductsSecurity:
     """Security and sanitization test suite for products filtering and search API endpoints."""
 
+    @allure.story("Input Sanitization & Injection Protection")
     @pytest.mark.parametrize(
         "filter_params",
         [

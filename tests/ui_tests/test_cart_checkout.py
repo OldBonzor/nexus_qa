@@ -5,6 +5,7 @@ and authentication requirements during the checkout process.
 """
 
 import pytest
+import allure
 from playwright.sync_api import Page, expect
 from src.ui.pages.inventory_page import InventoryPage
 from src.ui.pages.cart_page import CartPage
@@ -27,9 +28,12 @@ def cart_with_item(ui_page: Page) -> tuple[CartPage, Page]:
     return cart_page, ui_page
 
 
+@allure.epic("UI Storefront")
+@allure.feature("Shopping Cart & Checkout")
 class TestCartAndCheckout:
     """Test suite for cart management and checkout flows."""
 
+    @allure.story("Cart Management")
     def test_cart_item_details_and_calculations(self, cart_with_item) -> None:
         """Verify product details, quantity updates, and price calculations in the cart."""
         # --- Arrange ---
@@ -49,6 +53,7 @@ class TestCartAndCheckout:
         expect(total_price_element).to_be_visible()
         expect(total_price_element).not_to_have_text("")
 
+    @allure.story("Cart Management")
     def test_cart_interactive_controls_presence(self, cart_with_item) -> None:
         """Verify the availability of item removal controls and checkout navigation elements."""
         # --- Arrange ---
@@ -58,6 +63,7 @@ class TestCartAndCheckout:
         expect(ui_page.locator(cart_page.DELETE_BTN)).to_be_visible()
         expect(ui_page.locator(cart_page.CHECKOUT_BTN)).to_be_visible()
 
+    @allure.story("Checkout Flow")
     def test_checkout_requires_login(self, cart_with_item) -> None:
         """Verify that clicking proceed to checkout redirects unauthenticated user to login view."""
         # --- Arrange ---
@@ -70,6 +76,7 @@ class TestCartAndCheckout:
         # --- Assert ---
         expect(ui_page.locator(checkout_page.LOGIN_HEADING)).to_be_visible()
 
+    @allure.story("Cart Management")
     def test_cart_item_removal(self, cart_with_item) -> None:
         """Verify that clicking the delete button successfully removes the item from the cart."""
         # --- Arrange ---
@@ -81,6 +88,7 @@ class TestCartAndCheckout:
         # --- Assert ---
         expect(ui_page.locator(cart_page.ITEM_TITLE)).to_have_count(0)
 
+    @allure.story("Cart Management")
     def test_cart_multiple_items_and_removal(self, cart_with_item) -> None:
         """Verify adding a product, updating quantity, and managing cart items."""
         # --- Arrange ---
@@ -102,6 +110,7 @@ class TestCartAndCheckout:
         ui_page.locator(cart_page.DELETE_BTN).click()
         expect(ui_page.locator(cart_page.ITEM_TITLE)).to_have_count(0)
 
+    @allure.story("Checkout Flow")
     def test_empty_cart_checkout_prevention(self, ui_page: Page) -> None:
         """Verify that accessing the cart or checkout with no items prevents proceeding."""
         # --- Arrange ---
@@ -117,6 +126,7 @@ class TestCartAndCheckout:
         else:
             expect(checkout_btn).not_to_be_visible()
 
+    @allure.story("Cart Management")
     def test_cart_state_persistence_on_reload(self, cart_with_item) -> None:
         """Verify that cart contents persist after a page reload without requiring login."""
         # --- Arrange ---
