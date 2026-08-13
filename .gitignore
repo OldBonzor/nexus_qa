@@ -23,6 +23,7 @@ htmlcov/
 coverage.xml
 allure-results/
 allure-report/
+artifacts/
 test-results/
 playwright-report/
 blob-report/

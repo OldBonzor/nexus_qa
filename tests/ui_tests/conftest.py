@@ -4,10 +4,76 @@ This module provides common UI test fixtures, leveraging Playwright to manage
 browser context and page lifecycles. It integrates with Pydantic settings.
 """
 
-from typing import Any, Dict, Generator
 import pytest
-from playwright.sync_api import Browser, BrowserContext, Page
+import allure
+import tempfile
+from typing import Any, Dict, Generator
+import os
+from playwright.sync_api import Browser, BrowserContext, Page, Error as PlaywrightError
 from config.settings import settings
+
+
+@pytest.fixture(autouse=True)
+def playwright_tracing(page, request):
+    """Automatically start Playwright tracing and attach failure artifacts (screenshots & traces).
+
+    Stops tracing and attaches screenshot + .zip trace bundle to the Allure report
+    only if the test fails during setup, execution, or teardown.
+    """
+    # Start tracing before test execution
+    page.context.tracing.start(screenshots=True, snapshots=True, sources=True)
+
+    yield
+
+    # Retrieve test phase reports set by the pytest_runtest_makereport hook
+    rep_setup = getattr(request.node, "rep_setup", None)
+    rep_call = getattr(request.node, "rep_call", None)
+    rep_teardown = getattr(request.node, "rep_teardown", None)
+
+    # Check if the test failed in any of its execution phases
+    is_failed = False
+    for rep in (rep_setup, rep_call, rep_teardown):
+        if rep and rep.failed:
+            is_failed = True
+            break
+
+    if is_failed:
+        # 1. Capture and attach failure screenshot
+        with allure.step("Attach failure screenshot"):
+            try:
+                screenshot = page.screenshot(full_page=True)
+                allure.attach(
+                    screenshot,
+                    name="Failure Screenshot",
+                    attachment_type=allure.attachment_type.PNG,
+                )
+            except (TargetClosedError, Error) as e:
+                print(f"[Warning] Could not capture screenshot due to Playwright error: {e}")
+            except Exception as e:
+                print(f"[Warning] Unexpected error during screenshot capture: {e}")
+
+        # 2. Stop tracing and attach trace archive
+        with allure.step("Attach Playwright trace archive"):
+            try:
+                trace_path = f"artifacts/trace_{request.node.name}.zip"
+                page.context.tracing.stop(path=trace_path)
+
+                allure.attach.file(
+                    trace_path,
+                    name="Playwright Trace Archive",
+                    attachment_type="application/zip",
+                    extension=".zip",
+                )
+            except (TargetClosedError, Error) as e:
+                print(f"[Warning] Could not save trace due to Playwright error: {e}")
+            except Exception as e:
+                print(f"[Warning] Unexpected error during trace attachment: {e}")
+    else:
+        # Stop tracing without saving to disk for passed tests
+        try:
+            page.context.tracing.stop()
+        except Exception:
+            pass
 
 @pytest.fixture(scope="session")
 def browser_context_args(browser_context_args: Dict[str, Any]) -> Dict[str, Any]:
@@ -37,7 +103,6 @@ def context(browser: Browser, browser_context_args: dict) -> Generator[BrowserCo
         BrowserContext: The tracing-enabled context.
     """
     context = browser.new_context(**browser_context_args)
-    context.tracing.start(screenshots=True, snapshots=True, sources=True)
     yield context
     context.close()
 

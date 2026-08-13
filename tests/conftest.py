@@ -5,103 +5,101 @@ including BaseClient initialization and automatic session lifecycle management.
 """
 
 import os
+import platform
+import pytest
+import json
+import allure
+import playwright
+import requests
 import tempfile
 from typing import Any, Generator
-import pytest
-import requests
-import allure
 from src.api.base_client import BaseClient
-
-
-@pytest.hookimpl(tryfirst=True, hookwrapper=True)
-def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) -> Generator[None, Any, None]:
-    """Hook to capture the test execution status during the 'call' phase.
-
-    This hook wrapper runs for all execution phases. It intercepts the test report
-    and attaches a custom `rep_call` attribute to the test item if the phase is "call",
-    allowing downstream fixtures to inspect if the test passed or failed.
-    """
-    outcome = yield
-    rep = outcome.get_result()
-    if rep.when == "call":
-        item.rep_call = rep
-
-
-@pytest.fixture(scope="function", autouse=True)
-def auto_attach_artifacts(request: pytest.FixtureRequest) -> Generator[None, None, None]:
-    """Autouse fixture to safely capture screenshots and traces on test failure.
-
-    This fixture yields to the test execution. To prevent 'Target closed' or
-    'FixtureLookupError', it dynamically requests and registers dependencies on
-    the `page` and `context` fixtures if they are active in the current test.
-    
-    Upon test failure, full-page screenshots and Playwright traces are securely
-    attached to the Allure report, ensuring resources are cleaned up and tracing
-    is stopped without memory leaks.
-    """
-    # Force evaluation of page/context fixtures if they exist,
-    # so their setups complete before this fixture, and this fixture's
-    # teardown runs BEFORE their teardown (LIFO order).
-    if "page" in request.fixturenames:
-        request.getfixturevalue("page")
-    if "context" in request.fixturenames:
-        request.getfixturevalue("context")
-
-    yield
-
-    # Teardown phase: capture artifacts for UI tests
-    page = request.node.funcargs.get("page")
-    context = request.node.funcargs.get("context")
-    
-    # Safely retrieve test report execution info
-    rep_call = getattr(request.node, "rep_call", None)
-    is_failed = rep_call is not None and rep_call.failed
-
-    try:
-        if is_failed:
-            # Capture and attach screenshot on failure
-            if page and not page.is_closed():
-                try:
-                    screenshot_bytes = page.screenshot(full_page=True)
-                    allure.attach(
-                        screenshot_bytes,
-                        name="Failure Screenshot",
-                        attachment_type=allure.attachment_type.PNG,
-                    )
-                except Exception as screenshot_err:
-                    print(f"[Warning] Failed to capture screenshot: {screenshot_err}")
-
-            # Export and attach Playwright trace on failure
-            if context:
-                try:
-                    with tempfile.TemporaryDirectory() as temp_dir:
-                        trace_path = os.path.join(temp_dir, "trace.zip")
-                        context.tracing.stop(path=trace_path)
-                        if os.path.exists(trace_path):
-                            with open(trace_path, "rb") as trace_file:
-                                allure.attach(
-                                    trace_file.read(),
-                                    name="Playwright Trace",
-                                    attachment_type=allure.attachment_type.ZIP,
-                                )
-                except Exception as trace_err:
-                    print(f"[Warning] Failed to export Playwright trace: {trace_err}")
-        else:
-            # Purge tracing buffers for passed/skipped tests to prevent memory bloat
-            if context:
-                try:
-                    context.tracing.stop()
-                except Exception as trace_err:
-                    print(f"[Warning] Failed to stop Playwright trace: {trace_err}")
-
-    except Exception as general_err:
-        print(f"[Warning] Error during test artifact capture teardown: {general_err}")
 from src.api.models.auth_models import LoginRequest, LoginResponse
 from src.api.products_client import ProductsClient
 from src.api.models.product_models import PriceBoundaries
 
 
 BASE_URL = "https://api.practicesoftwaretesting.com"
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) -> Generator[None, Any, None]:
+    """Hook to capture test execution status across all phases (setup, call, teardown).
+
+    Attaches rep_setup, rep_call, and rep_teardown to the test item
+    so fixtures can inspect if the test failed at any stage.
+    """
+    outcome = yield
+    rep = outcome.get_result()
+    # Dynamically sets rep_setup, rep_call, or rep_teardown depending on the current phase
+    setattr(item, f"rep_{rep.when}", rep)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def configure_allure_environment():
+    """Automatically generates Allure metadata files (environment.properties,
+    categories.json, executor.json) at the beginning of the test session
+    to enhance report analytics and visual debugging.
+    """
+    results_dir = "allure-results"
+    os.makedirs(results_dir, exist_ok=True)
+    
+    # 1. Environment Properties
+    env_properties = {
+        "Environment": os.getenv("TEST_ENV", "Docker / Staging"),
+        "Python.Version": platform.python_version(),
+        "Platform.OS": f"{platform.system()} {platform.release()}",
+        "Playwright.Version": getattr(playwright, "__version__", "Unknown"),
+        "Execution.Type": "Containerized (Docker)" if os.getenv("DOCKER_CONTAINER") else "Local",
+        "Author": "Denis Belyakov",
+    }
+    env_path = os.path.join(results_dir, "environment.properties")
+    try:
+        with open(env_path, "w", encoding="utf-8") as f:
+            for key, value in env_properties.items():
+                f.write(f"{key}={value}\n")
+    except Exception as e:
+        print(f"Warning: Failed to generate environment.properties: {e}")
+
+    # 2. Categories Definition (Smart Error Grouping)
+    categories = [
+        {
+            "name": "Product Defects",
+            "matchedStatuses": ["failed"],
+            "messageRegex": ".*AssertionError.*|.*Mismatch.*",
+            "traceRegex": ".*assert.*",
+            "flaky": False
+        },
+        {
+            "name": "Test / Infrastructure Defects",
+            "matchedStatuses": ["broken", "failed"],
+            "messageRegex": ".*TimeoutError.*|.*ConnectionError.*|.*HTTP 5\\d{2}.*",
+            "flaky": False
+        }
+    ]
+    categories_path = os.path.join(results_dir, "categories.json")
+    try:
+        with open(categories_path, "w", encoding="utf-8") as f:
+            json.dump(categories, f, indent=2)
+    except Exception as e:
+        print(f"Warning: Failed to generate categories.json: {e}")
+
+    # 3. Executor Information (CI/CD Runner Context)
+    is_ci = os.getenv("CI", "false").lower() == "true"
+    executor_info = {
+        "name": "GitHub Actions" if is_ci else "Local Machine",
+        "type": "github" if is_ci else "local",
+        "url": os.getenv("GITHUB_SERVER_URL", "") + "/" + os.getenv("GITHUB_REPOSITORY", "") if is_ci else "http://localhost",
+        "buildUrl": os.getenv("GITHUB_RUN_URL", "") if is_ci else "http://localhost",
+        "buildName": os.getenv("GITHUB_RUN_ID", "Manual Local Run"),
+        "reportUrl": os.getenv("ALLURE_REPORT_URL", "")
+    }
+    executor_path = os.path.join(results_dir, "executor.json")
+    try:
+        with open(executor_path, "w", encoding="utf-8") as f:
+            json.dump(executor_info, f, indent=2)
+    except Exception as e:
+        print(f"Warning: Failed to generate executor.json: {e}")
 
 
 @pytest.fixture(scope="session")
