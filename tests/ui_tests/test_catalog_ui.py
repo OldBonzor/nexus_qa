@@ -87,12 +87,37 @@ class TestCatalogAndInventoryUI:
             f"but found: {empty_product_names}"
         )
 
+
+    @allure.story("Catalog Sorting")
+    @allure.title("Verify basic sorting: Price (Low - High)")
+    @pytest.mark.smoke
+    def test_catalog_sorting_basic(self, ui_page: Page) -> None:
+        """
+        Smoke test: Verify that the catalog can be sorted by price 
+        (Low to High) as a baseline check for sorting functionality.
+        """
+        # --- Arrange ---
+        inventory_page = InventoryPage(ui_page)
+        inventory_page.open()
+        sort_option = "Price (Low - High)"
+        descending = False
+
+        # --- Act ---
+        inventory_page.sort_by(sort_option)
+        values = inventory_page.get_product_values_by_sort_option(sort_option)
+
+        # --- Assert ---
+        assert len(values) > 1, "Not enough products to verify sorting"
+        assert values == sorted(values, reverse=descending), (
+            f"Products are not sorted correctly for {sort_option}. Actual: {values}"
+        )
+
+
     @allure.story("Catalog Sorting")
     @allure.title("Verify sorting by criteria: {sort_option}")
     @pytest.mark.parametrize(
         ("sort_option", "descending"),
         [
-            ("Price (Low - High)", False),
             ("Price (High - Low)", True),
             ("Name (A - Z)", False),
             ("Name (Z - A)", True),
@@ -100,7 +125,6 @@ class TestCatalogAndInventoryUI:
             ("CO₂ Rating (E - A)", True),
         ],
         ids=[
-            "price_low_to_high",
             "price_high_to_low",
             "name_a_to_z",
             "name_z_to_a",

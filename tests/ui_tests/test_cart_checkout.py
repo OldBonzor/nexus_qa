@@ -34,6 +34,7 @@ class TestCartAndCheckout:
     """Test suite for cart management and checkout flows."""
 
     @allure.story("Cart Management")
+    @pytest.mark.smoke
     def test_cart_item_details_and_calculations(self, cart_with_item) -> None:
         """Verify product details, quantity updates, and price calculations in the cart."""
         # --- Arrange ---
@@ -54,6 +55,7 @@ class TestCartAndCheckout:
         expect(total_price_element).not_to_have_text("")
 
     @allure.story("Cart Management")
+    @pytest.mark.smoke
     def test_cart_interactive_controls_presence(self, cart_with_item) -> None:
         """Verify the availability of item removal controls and checkout navigation elements."""
         # --- Arrange ---
@@ -64,6 +66,7 @@ class TestCartAndCheckout:
         expect(ui_page.locator(cart_page.CHECKOUT_BTN)).to_be_visible()
 
     @allure.story("Checkout Flow")
+    @pytest.mark.smoke
     def test_checkout_requires_login(self, cart_with_item) -> None:
         """Verify that clicking proceed to checkout redirects unauthenticated user to login view."""
         # --- Arrange ---

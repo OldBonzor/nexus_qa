@@ -12,6 +12,7 @@ class TestAuthAndProtectedEndpoints:
     """Test suite for authentication workflows and protected resource access."""
 
     @allure.story("User Login")
+    @pytest.mark.smoke
     def test_successful_login(self, api_client: BaseClient) -> None:
         """Verify successful user authentication with valid credentials."""
         # --- Arrange & Act ---
@@ -62,6 +63,7 @@ class TestAuthAndProtectedEndpoints:
 
     @allure.story("Protected Endpoints")
     @allure.title("Access protected endpoint '{endpoint}' using Bearer token")
+    @pytest.mark.smoke
     @pytest.mark.parametrize(
         "endpoint",
         [

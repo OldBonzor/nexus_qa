@@ -15,7 +15,9 @@ from src.api.products_client import ProductsClient
 @allure.epic("API Backend")
 @allure.feature("Products Management")
 class TestProductsList:
+    """Suite for testing product list retrieval, data contracts, and pagination behavior."""
     @allure.story("Get Products List")
+    @pytest.mark.smoke
     def test_get_products_list(self, products_client: ProductsClient) -> None:
         """Test retrieving list of products and response contract validity."""
         # --- Arrange & Act ---
@@ -145,6 +147,7 @@ class TestProductsList:
 class TestProductDetails:
     """Suite for testing product details endpoint (/products/{id})."""
     @allure.story("Get Product By ID")
+    @pytest.mark.smoke
     def test_get_product_by_id(self, products_client: ProductsClient):
         """Verify that product requested using valid ID returns 200 code with product data."""
         # --- Arrange ---
@@ -213,6 +216,7 @@ class TestProductDetails:
 @allure.epic("API Backend")
 @allure.feature("Product Search")
 class TestProductsSearch:
+    """Suite for testing product search functionality, keyword matching, and negative search cases."""
     @allure.story("Search Products")
     @pytest.mark.parametrize("queries, expected_keyword", [
         (["hammer", "HAMMER", "HaMmEr"], "hammer"),
@@ -289,9 +293,37 @@ class TestProductsSearch:
 @allure.feature("Product Filtering")
 class TestProductsFilter:
     """Suite for testing product list filtering by category and brand."""
+    @pytest.mark.smoke
+    @allure.story("Filter by Category")
+    @allure.title("Filtering products: Basic category filter check")
+    def test_filter_products_by_category(
+        self, 
+        products_client: ProductsClient, 
+        valid_filter_pairs: list[dict[str, Any]]
+    ):
+        """
+        Quick smoke test: Validates product filtering by a single category
+        using the first available pair to ensure the filter endpoint is responsive.
+        """
+        # --- Arrange ---
+        # Take the first pair to perform a quick health check
+        target_pair = valid_filter_pairs[0]
+        params = {"by_category": target_pair["by_category"]}
+
+        # --- Act ---
+        response = products_client.get_products(params=params, expected_status=200)
+        products_data = ProductsListResponse(**response.json())
+
+        # --- Assert ---
+        assert products_data.total > 0, "Expected total > 0 for a basic category filter"
+        for product in products_data.data:
+            assert product.category.id == params["by_category"], (
+                f"Expected category ID {params['by_category']}, got {product.category.id}"
+            )
+
     @pytest.mark.parametrize(
-        "filter_mode", ["category_only", "brand_only", "category_and_brand"],
-        ids=["category_only", "brand_only", "combined_category_and_brand"],
+        "filter_mode", ["brand_only", "category_and_brand"],
+        ids=["brand_only", "combined_category_and_brand"],
     )
     @allure.story("Filter by Category and Brand")
     @allure.title("Filtering products: Category='{category}', Brand='{brand}'")
@@ -310,8 +342,6 @@ class TestProductsFilter:
         for pair in valid_filter_pairs:
             # --- Arrange ---
             match filter_mode:
-                case "category_only":
-                    params = {"by_category": pair["by_category"]}
                 case "brand_only":
                     params = {"by_brand": pair["by_brand"]}
                 case "category_and_brand":
@@ -1086,6 +1116,7 @@ class TestProductsSortingPositive:
         ],
     )
     @allure.story("Sorting Positive")
+    @pytest.mark.smoke
     def test_get_products_sorting(
         self,
         products_client: ProductsClient,
