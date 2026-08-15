@@ -17,4 +17,4 @@ services:
       - ./allure-results:/app/allure-results
 
     # Command executed when the container starts
-    command: pytest --alluredir=allure-results
+    command: pytest

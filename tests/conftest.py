@@ -37,12 +37,30 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) ->
 
 @pytest.fixture(scope="session", autouse=True)
 def configure_allure_environment():
-    """Automatically generates Allure metadata files (environment.properties,
-    categories.json, executor.json) at the beginning of the test session
-    to enhance report analytics and visual debugging.
+    """Automatically generate Allure metadata files (environment.properties,
+    categories.json, executor.json) and ensure a pristine results directory
+    at the beginning of the test session.
+    
+    Clears out stale test results from previous runs while preserving the directory 
+    itself to remain fully compatible with Docker volume mounts.
     """
     results_dir = "allure-results"
-    os.makedirs(results_dir, exist_ok=True)
+    
+    # Purge stale results to prevent cross-run artifact contamination
+    if os.path.exists(results_dir):
+        for filename in os.listdir(results_dir):
+            file_path = os.path.join(results_dir, filename)
+            if filename == '.gitkeep':
+                continue
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+            except Exception as e:
+                print(f"Warning: Failed to delete stale artifact {file_path}: {e}")
+    else:
+        os.makedirs(results_dir, exist_ok=True)
     
     # 1. Environment Properties
     env_properties = {
@@ -51,7 +69,7 @@ def configure_allure_environment():
         "Platform.OS": f"{platform.system()} {platform.release()}",
         "Playwright.Version": getattr(playwright, "__version__", "Unknown"),
         "Execution.Type": "Containerized (Docker)" if os.getenv("DOCKER_CONTAINER") else "Local",
-        "Author": "Denis Belyakov",
+        "Author": "Denis B.",
     }
     env_path = os.path.join(results_dir, "environment.properties")
     try:
