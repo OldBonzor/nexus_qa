@@ -21,6 +21,7 @@ debug_*
 .coverage
 htmlcov/
 coverage.xml
+allure-history/
 allure-results/
 allure-report/
 artifacts/

@@ -1,0 +1,55 @@
+name: QA Automation Pipeline
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  # Allow manual trigger with test suite selection
+  workflow_dispatch:
+    inputs:
+      test_marker:
+        description: 'Select test marker to run'
+        required: true
+        default: 'smoke'
+        type: choice
+        options:
+          - smoke
+          - api
+          - ui
+          - regression
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout repository code to the runner
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Docker Buildx and build container image with layer caching
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and export Docker image to local runtime
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          load: true # Load built image into local Docker daemon so docker compose can use it
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Step 3: Run Pytest tests dynamically based on selected marker (defaults to smoke on push/PR)
+      - name: Run Pytest tests
+        run: docker compose run --rm nexus_qa_runner pytest -m "${{ github.event.inputs.test_marker || 'smoke' }}"
+
+      # Step 4: Upload Allure results as a workflow artifact
+      - name: Upload Allure results
+        uses: actions/upload-artifact@v4
+        if: always() # Ensures artifacts are uploaded even if tests fail
+        with:
+          name: allure-results
+          path: allure-results/
+          retention-days: 30
