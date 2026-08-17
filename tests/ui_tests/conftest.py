@@ -6,10 +6,14 @@ browser context and page lifecycles. It integrates with Pydantic settings.
 
 import pytest
 import allure
-import tempfile
 from typing import Any, Dict, Generator
-import os
-from playwright.sync_api import Browser, BrowserContext, Page, Error as PlaywrightError
+from playwright.sync_api import (
+    Browser,
+    BrowserContext,
+    Page,
+    Error as PlaywrightError,
+    TargetClosedError,
+)
 from config.settings import settings
 
 
@@ -47,7 +51,7 @@ def playwright_tracing(page, request):
                     name="Failure Screenshot",
                     attachment_type=allure.attachment_type.PNG,
                 )
-            except (TargetClosedError, Error) as e:
+            except (TargetClosedError, PlaywrightError) as e:
                 print(f"[Warning] Could not capture screenshot due to Playwright error: {e}")
             except Exception as e:
                 print(f"[Warning] Unexpected error during screenshot capture: {e}")
@@ -64,7 +68,7 @@ def playwright_tracing(page, request):
                     attachment_type="application/zip",
                     extension=".zip",
                 )
-            except (TargetClosedError, Error) as e:
+            except (TargetClosedError, PlaywrightError) as e:
                 print(f"[Warning] Could not save trace due to Playwright error: {e}")
             except Exception as e:
                 print(f"[Warning] Unexpected error during trace attachment: {e}")

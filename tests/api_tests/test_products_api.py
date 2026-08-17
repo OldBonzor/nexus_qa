@@ -3,7 +3,7 @@
 import pytest
 import allure
 from math import ceil
-from typing import Any, Optional
+from typing import Any
 from src.api.models.product_models import (
     PriceBoundaries,
     ProductItem,

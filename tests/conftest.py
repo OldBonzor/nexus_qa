@@ -8,10 +8,8 @@ import os
 import platform
 import pytest
 import json
-import allure
 import playwright
-import requests
-import tempfile
+import shutil
 from typing import Any, Generator
 from src.api.base_client import BaseClient
 from src.api.models.auth_models import LoginRequest, LoginResponse
