@@ -4,10 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    
-    # Custom container name for easier tracking
-    container_name: nexus_qa_tests
-    
+
     # Pass environment variables from local .env file into the container
     env_file:
       - .env
@@ -17,4 +14,4 @@ services:
       - ./allure-results:/app/allure-results
 
     # Command executed when the container starts
-    command: pytest
+    command: pytest --alluredir=allure-results
