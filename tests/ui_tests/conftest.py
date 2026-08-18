@@ -16,6 +16,29 @@ from playwright.sync_api import (
 from config.settings import settings
 
 
+def pytest_addoption(parser: pytest.Parser):
+    """Register custom CLI options for viewport configuration."""
+    group = parser.getgroup("viewport", "Viewport configuration")
+    group.addoption(
+        "--viewport-width",
+        action="store",
+        default=1920,
+        type=int,
+    )
+    group.addoption(
+        "--viewport-height",
+        action="store",
+        default=1080,
+        type=int,
+    )
+    group.addoption(
+        "--zoom",
+        action="store",
+        default="1.0",
+        help="Page zoom level (e.g., '0.8' for 80%). Use for demo recording.",
+    )
+
+
 @pytest.fixture(autouse=True)
 def playwright_tracing(page, request):
     """Automatically start Playwright tracing and attach failure artifacts (screenshots & traces).
@@ -78,16 +101,26 @@ def playwright_tracing(page, request):
         except Exception:
             pass
 
+
 @pytest.fixture(scope="session")
-def browser_context_args(browser_context_args: Dict[str, Any]) -> Dict[str, Any]:
-    """Force full screen resolution (1920x1080) for headless browser contexts."""
+def browser_context_args(browser_context_args: Dict[str, Any], pytestconfig: pytest.Config) -> Dict[str, Any]:
+    """
+    Override browser context arguments to set viewport dimensions.
+    
+    This fixture prioritizes CLI flags ('--viewport-width', '--viewport-height') 
+    provided at runtime, falling back to industry-standard 1920x1080 if not specified.
+    """
+    width = pytestconfig.getoption("--viewport-width")
+    height = pytestconfig.getoption("--viewport-height")
+    
     return {
         **browser_context_args,
         "viewport": {
-            "width": 1920,
-            "height": 1080,
+            "width": width,
+            "height": height,
         },
     }
+
 
 @pytest.fixture(scope="function")
 def context(browser: Browser, browser_context_args: dict) -> Generator[BrowserContext, None, None]:
@@ -110,8 +143,6 @@ def context(browser: Browser, browser_context_args: dict) -> Generator[BrowserCo
     context.close()
 
 
-
-
 @pytest.fixture(scope="session")
 def browser_type_launch_args(browser_type_launch_args: dict, request: pytest.FixtureRequest) -> dict:
     """Override browser launch arguments, prioritizing CLI flags over settings."""
@@ -124,7 +155,7 @@ def browser_type_launch_args(browser_type_launch_args: dict, request: pytest.Fix
 
 
 @pytest.fixture(scope="function")
-def ui_page(page: Page) -> Generator[Page, None, None]:
+def ui_page(page: Page, pytestconfig: pytest.Config) -> Generator[Page, None, None]:
     """Provide a pre-configured Page instance for UI testing.
 
     Educational Scaffolding:
@@ -134,10 +165,16 @@ def ui_page(page: Page) -> Generator[Page, None, None]:
 
     Args:
         page: The default Playwright Page instance.
+        pytestconfig: The active pytest configuration object.
 
     Yields:
         Page: Configured Playwright Page instance.
     """
+    # Apply zoom at page start if given in CLI
+    zoom_level = pytestconfig.getoption("--zoom")
+    if zoom_level != "1.0":
+        page.evaluate(f"document.body.style.zoom = '{zoom_level}'")
+
     # Configure the default timeout from global configuration (Pydantic settings)
     page.set_default_timeout(settings.PAGE_TIMEOUT)
     
