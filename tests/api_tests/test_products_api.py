@@ -1103,10 +1103,10 @@ class TestProductsSortingPositive:
     @pytest.mark.parametrize(
         "sort_field, direction",
         [
-            ("price", "asc"),
-            ("price", "desc"),
-            ("name", "asc"),
-            ("name", "desc"),
+            pytest.param("price", "asc", marks=pytest.mark.smoke),
+            pytest.param("price", "desc"),
+            pytest.param("name", "asc"),
+            pytest.param("name", "desc"),
         ],
         ids=[
             "sort_by_price_ascending",
@@ -1116,7 +1116,6 @@ class TestProductsSortingPositive:
         ],
     )
     @allure.story("Sorting Positive")
-    @pytest.mark.smoke
     def test_get_products_sorting(
         self,
         products_client: ProductsClient,

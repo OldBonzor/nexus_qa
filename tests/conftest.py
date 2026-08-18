@@ -333,3 +333,23 @@ def price_boundaries(
         exact_price=all_prices[len(all_prices) // 2],
         mid_price=round(sum(all_prices) / len(all_prices), 2),
     )
+
+
+def pytest_collection_modifyitems(items):
+    """
+    Dynamically assign markers to tests based on their file path during the 
+    pytest collection phase.
+    
+    This hook allows us to manage test suite categorization (API vs UI) 
+    automatically without adding decorators to every individual test file.
+    """
+    for item in items:
+        # Check if the test file path contains the 'api_tests' directory
+        if "api_tests" in str(item.fspath):
+            marker = pytest.mark.api
+            item.add_marker(marker)
+        
+        # Check if the test file path contains the 'ui_tests' directory
+        elif "ui_tests" in str(item.fspath):
+            marker = pytest.mark.ui
+            item.add_marker(marker)
