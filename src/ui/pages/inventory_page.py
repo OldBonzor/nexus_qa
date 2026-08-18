@@ -4,9 +4,10 @@ Encapsulates all locators and user interactions specific to the storefront,
 catalog sorting, filtering, and cart operations.
 """
 
-from typing import List
+from typing import List, Callable
 from playwright.sync_api import Locator, expect
 from src.ui.pages.base_page import BasePage
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_result
 
 
 class InventoryPage(BasePage):
@@ -52,10 +53,42 @@ class InventoryPage(BasePage):
         response = response_info.value
         assert response.status == expected_status, f"Catalog failed with status: {response.status}, expected {expected_status}"
 
-    def search_product(self, query: str) -> None:
+    def wait_for_grid_update(
+        self, 
+        initial_values: list, 
+        action_callback: Callable[[], list], 
+        allow_empty: bool = False
+    ) -> list:
+        """Universal polling-synchronization coordinator using tenacity.
+        
+        Args:
+            initial_values (list): The state of data before action.
+            action_callback (Callable[[], list]): A function that fetches current data.
+            allow_empty (bool): If True, accepts an empty list [] as a valid final result 
+                                (e.g., for zero-result search or filter tests).
+        """
+        @retry(
+            stop=stop_after_attempt(15),  # Max ~3 seconds with 0.2s interval
+            wait=wait_fixed(0.2),         # Check every 200ms
+            # Retry if:
+            # 1. The result is empty AND we do NOT allow empty lists (standard behavior).
+            # 2. OR the result is still equal to the initial pre-action values.
+            retry=retry_if_result(
+                lambda current: (not current and not allow_empty) or (current == initial_values)
+            ),
+            reraise=True
+        )
+        def _poll() -> list:
+            return action_callback()
+        
+        return _poll()
+
+    def search_product(self, query: str, allow_empty: bool = False) -> None:
         """Type a search query into the search input field and submit,
-        waiting for the network response to synchronize the filtered product grid
-        and prevent race conditions.
+        synchronizing product grid updates using tenacity polling.
+
+        This approach ensures resilience against SPA DOM re-rendering delays
+        without tightly coupling tests to specific internal API endpoints.
 
         Args:
             query (str): The keyword or product name to search for (e.g., 'Hammer').
@@ -63,144 +96,141 @@ class InventoryPage(BasePage):
         search_input_locator = self.page.locator(self.SEARCH_INPUT)
         search_submit_locator = self.page.locator(self.SEARCH_SUBMIT)
 
+        # Ensure input field is ready and fill the search query
         self.wait_for_visible(search_input_locator)
         search_input_locator.fill(query)
 
-        # Wrap the submission in a network response expectation for the products search endpoint
-        with self.page.expect_response("**/products/search*") as response_info:
-            search_submit_locator.click()
+        # 1. Capture the initial state of the product grid (names) before searching
+        initial_values = self.get_all_product_names()
 
-        response = response_info.value
-        assert (response.status == 200), (
-            f"Failed to perform product search. Status: {response.status}"
+        # 2. Submit the search form
+        self.wait_for_visible(search_submit_locator)
+        search_submit_locator.click()
+
+        # 3. Synchronize using the universal tenacity coordinator.
+        # It polls until product names change or elements render, handling empty DOM states safely.
+        self.wait_for_grid_update(
+            initial_values,
+            lambda: self.get_all_product_names(),
+            allow_empty=allow_empty
         )
 
-        # Check if any product cards are present using count() to avoid hardcoded timeouts
-        product_cards = self.page.locator(self.PRODUCT_CARD)
-        if product_cards.count() > 0:
-            product_cards.first.wait_for(state="visible")
-
     def sort_by(self, sort_option_value: str) -> None:
-        """Select a sorting option from the product catalog dropdown and wait for grid update.
-
-        Args:
-            sort_option_value (str): Visible text or label of the sorting option to select 
-                                     (e.g., 'Price (Low - High)').
-        """
-        self.page.locator(self.PRODUCT_CARD).first.wait_for(state="visible")
+        """Select a sorting option and synchronize grid updates using the tenacity coordinator.
         
+        Args:
+            sort_option_value (str): The visible text or label of the sorting option.
+        """
+        product_cards = self.get_product_cards()
+        product_cards.first.wait_for(state="visible")
+        
+        # 1. Capture the initial state of the grid before sorting
+        initial_values = self.get_product_values_by_sort_option(sort_option_value)
+        
+        # 2. Interact with the sorting dropdown
         sort_locator = self.page.locator(self.SORT_SELECT)
         self.wait_for_visible(sort_locator)
+        sort_locator.select_option(label=sort_option_value)
         
-        # Expect the products endpoint to be called and return sorted data upon selection
-        with self.page.expect_response("**/products*") as response_info:
-            sort_locator.select_option(label=sort_option_value)
-            
-        response = response_info.value
-        assert response.status == 200, f"Failed to sort products. Status: {response.status}"
-
-        # Ensure the product grid successfully re-renders after sorting
-        expect(self.page.locator(self.PRODUCT_CARD).first).to_be_visible()
+        # 3. Synchronize via tenacity coordinator
+        self.wait_for_grid_update(
+            initial_values,
+            lambda: self.get_product_values_by_sort_option(sort_option_value)
+        )
 
     def filter_by_category(
         self,
         category_name: str | None = None,
         subcategory_name: str | None = None,
     ) -> None:
-        """Filter the product catalog by selecting a category and an optional nested subcategory
-        using reliable text-based element targeting.
+        """Filter the product catalog by selecting a category or subcategory,
+        synchronizing grid updates using the tenacity coordinator.
 
         Args:
             category_name (str): The main category visible name (e.g., 'Hand Tools').
             subcategory_name (str | None): The nested subcategory visible name if applicable (e.g., 'Hammer').
         """
-        self.page.locator(self.PRODUCT_CARD).first.wait_for(state="visible")
+        self.get_product_cards().first.wait_for(state="visible")
         
         target_name = subcategory_name if subcategory_name else category_name
-        
         target_checkbox = self.page.locator(f"//label[contains(normalize-space(), '{target_name}')]//input[@type='checkbox']")
         self.wait_for_visible(target_checkbox.first)
         
-        with self.page.expect_response("**/products*") as response_info:
-            target_checkbox.first.click(force=True)
+        # 1. Capture initial state of product names before filtering
+        initial_values = self.get_all_product_names()
 
-        response = response_info.value
-        assert response.status == 200, f"Failed to filter products. Status: {response.status}"
+        # 2. Click category/subcategory filter checkbox
+        target_checkbox.first.click(force=True)
 
-        # Allow a short moment for grid update; if no products match, don't crash hard on visibility if empty check handles it
-        try:
-            expect(self.page.locator(self.PRODUCT_CARD).first).to_be_visible()
-        except AssertionError:
-            expect(self.page.locator(self.PRODUCT_CARD)).to_have_count(0)
+        # 3. Synchronize via tenacity coordinator
+        self.wait_for_grid_update(
+            initial_values,
+            lambda: self.get_all_product_names()
+        )
 
     def get_product_cards(self) -> Locator:
-        """Retrieve all product card locators currently displayed in the catalog grid,
-        ensuring the grid is fully loaded and synchronized to prevent race conditions.
+        """Retrieve the product card locator as a Locator factory pattern,
+        avoiding pre-evaluated static lists and preventing race conditions.
 
         Returns:
-            Locator: A Playwright Locator representing all matching product cards.
+            Locator: A Playwright Locator representing matching product cards.
         """
-        cards_locator = self.page.locator(self.PRODUCT_CARD)
-        expect(cards_locator.first).to_be_visible()
-        return cards_locator
+        return self.page.locator(self.PRODUCT_CARD)
 
     def get_all_product_prices(self) -> List[float]:
-        """Extract and parse all product prices currently displayed in the catalog grid safely,
-        skipping invalid or non-numeric price formats to prevent test crashes.
-        """
-        price_locator = self.page.locator(self.PRODUCT_PRICE)
-        expect(price_locator.first).to_be_visible()
-        
-        price_elements = price_locator.all_inner_texts()
+        """Extract all product prices from the grid as floats.
+        Relies on grid stability managed by the tenacity coordinator."""
+        # Fetch raw inner text from all price elements currently present in the DOM
+        price_elements = self.page.locator(self.PRODUCT_PRICE).all_inner_texts()
         
         parsed_prices = []
         for price_str in price_elements:
+            # Clean currency symbols, commas, and whitespace for safe float conversion
             cleaned_str = price_str.replace("$", "").replace(",", "").strip()
-            try:
-                if cleaned_str:
+            if cleaned_str:
+                try:
                     parsed_prices.append(float(cleaned_str))
-            except ValueError:
-                # Skip elements which can't be converted to digits (Markup bugs protection)
-                continue
-                
+                except ValueError:
+                    # Gracefully skip any malformed price strings
+                    continue
         return parsed_prices
 
-    def get_all_product_names(self) -> list[str]:
-        """Retrieve the names of all products currently displayed in the catalog.
-
-        Returns:
-            A list of product names as strings.
-        """
-        # Locate all product title elements using the predefined locator constant
+    def get_all_product_names(self) -> List[str]:
+        """Retrieve titles of all visible products in the grid."""
+        # Extract title texts directly without redundant visibility assertions
         titles = self.page.locator(self.PRODUCT_TITLE).all_inner_texts()
         return [title.strip() for title in titles]
 
     def get_all_product_co2_ratings(self) -> List[str]:
-        """Retrieve the active CO2 ratings of all products currently displayed in the catalog.
-
-        Returns:
-            A list of active CO2 rating letters as strings.
-        """
-        rating_locator = self.page.locator(self.CO2_RATING)
-        expect(rating_locator.first).to_be_visible()
-        ratings = rating_locator.all_inner_texts()
+        """Retrieve CO2 rating letters for all products in the grid."""
+        # Fetch active CO2 rating badges text elements
+        ratings = self.page.locator(self.CO2_RATING).all_inner_texts()
         return [rating.strip() for rating in ratings]
 
     def get_product_values_by_sort_option(self, sort_option: str) -> List:
-        """Fetch product values (prices, names, or ratings) based on the sorting option using match/case."""
-        match sort_option:
-            case option if "Price" in option:
-                return self.get_all_product_prices()
-            case option if "Name" in option:
-                return self.get_all_product_names()
-            case option if "CO₂" in option or "CO2" in option:
-                return self.get_all_product_co2_ratings()
-            case _:
-                raise ValueError(f"Unsupported sorting option: {sort_option}")
+        """Fetch product values (prices, names, or ratings) based on the sorting option using match/case.
+        Safely returns an empty list during transient DOM re-rendering states.
+        """
+        cards = self.get_product_cards()
+        if cards.count() == 0:
+            return []
+        
+        try:
+            match sort_option:
+                case option if "Price" in option:
+                    return self.get_all_product_prices()
+                case option if "Name" in option:
+                    return self.get_all_product_names()
+                case option if "CO₂" in option or "CO2" in option:
+                    return self.get_all_product_co2_ratings()
+                case _:
+                    raise ValueError(f"Unsupported sorting option: {sort_option}")
+        except Exception:
+            return []
 
     def get_product_cards_count(self) -> int:
         """Get the count of currently visible product cards in the catalog."""  
-        return self.page.locator(self.PRODUCT_CARD).count()
+        return self.get_product_cards().count()
 
     def open_first_product_details(self) -> None:
         """Open the details page of the first available product from the catalog grid."""

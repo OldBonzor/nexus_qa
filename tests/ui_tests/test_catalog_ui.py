@@ -78,7 +78,7 @@ class TestCatalogAndInventoryUI:
         non_existent_query = "NonExistentProductXYZ123"
 
         # --- Act ---
-        inventory_page.search_product(non_existent_query)
+        inventory_page.search_product(non_existent_query, allow_empty=True)
 
         # --- Assert ---
         empty_product_names = inventory_page.get_all_product_names()
@@ -86,7 +86,6 @@ class TestCatalogAndInventoryUI:
             f"Expected zero products for query '{non_existent_query}', "
             f"but found: {empty_product_names}"
         )
-
 
     @allure.story("Catalog Sorting")
     @allure.title("Verify basic sorting: Price (Low - High)")
@@ -111,7 +110,6 @@ class TestCatalogAndInventoryUI:
         assert values == sorted(values, reverse=descending), (
             f"Products are not sorted correctly for {sort_option}. Actual: {values}"
         )
-
 
     @allure.story("Catalog Sorting")
     @allure.title("Verify sorting by criteria: {sort_option}")
