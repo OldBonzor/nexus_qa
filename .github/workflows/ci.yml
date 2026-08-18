@@ -55,8 +55,20 @@ jobs:
       # Step 4: Run API smoke tests only in CI.
       # UI tests are excluded due to timeout issues caused by GitHub Actions free tier resource limitations 
       # and potential DDoS protection on the target server triggered by requests from dynamic GitHub runner IP pools.
-      - name: Run API smoke tests
-        run: docker compose run --rm nexus_qa_runner pytest -m "${{ github.event.inputs.test_marker || 'api and smoke' }}"
+      - name: Run tests based on marker
+        env:
+          # Safely pass the GitHub Actions workflow input to an environment variable
+          INPUT_MARKER: ${{ github.event.inputs.test_marker }}
+        run: |
+          if [ -z "$INPUT_MARKER" ] || [ "$INPUT_MARKER" == "smoke" ]; then
+            TARGET_MARKER="api and smoke"
+            echo "::notice::No marker specified or 'smoke' alias used. Falling back to API smoke suite."
+          else
+            TARGET_MARKER="$INPUT_MARKER"
+          fi
+
+          echo "Executing test suite with marker: '$TARGET_MARKER'"
+          docker compose run --rm nexus_qa_runner pytest -m "$TARGET_MARKER"
 
       # Step 5: Upload Allure results as a workflow artifact
       - name: Upload Allure results
