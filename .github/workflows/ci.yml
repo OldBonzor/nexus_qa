@@ -52,9 +52,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Step 4: Run Pytest tests dynamically based on selected marker (defaults to smoke on push/PR)
-      - name: Run Pytest tests
-        run: docker compose run --rm nexus_qa_runner pytest -m "${{ github.event.inputs.test_marker || 'smoke' }}"
+      # Step 4: Run API smoke tests only in CI.
+      # UI tests are excluded due to timeout issues caused by GitHub Actions free tier resource limitations 
+      # and potential DDoS protection on the target server triggered by requests from dynamic GitHub runner IP pools.
+      - name: Run API smoke tests
+        run: docker compose run --rm nexus_qa_runner pytest -m "${{ github.event.inputs.test_marker || 'api and smoke' }}"
 
       # Step 5: Upload Allure results as a workflow artifact
       - name: Upload Allure results
