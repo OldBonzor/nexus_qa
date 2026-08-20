@@ -11,11 +11,6 @@
 
 Built to validate modern Single Page Applications (SPAs) and REST APIs, this project demonstrates professional QA automation practices, clean Python code standards, and pragmatic engineering decisions.
 
-### 🎥 Visual Demonstration
-Execution of Playwright UI test scenarios covering product callatalog filtering, sorting, and shopping cart workflows:
-
-![UI Test Execution Demo](assets/nexus_qa_ui_tests_demo.gif)
-
 ---
 
 ## 🏗️ Project Architecture & Tech Stack
@@ -68,7 +63,7 @@ nexus_qa/
 │   │   ├── test_auth_api.py
 │   │   └── test_products_api.py
 │   └── ui_tests/                # UI specific test suites
-│   │   ├── __init__.py
+│       ├── __init__.py
 │       ├── conftest.py          # UI fixtures (browser lifecycle, authenticated pages)
 │       ├── test_auth_ui.py
 │       ├── test_cart_checkout.py
@@ -88,18 +83,19 @@ nexus_qa/
 ### 🧠 Architectural Decisions Highlight
 
 #### 📡 1. API Layer Architecture
-* **Contract Enforcement:** Implemented using Python's `abc.ABC` to guarantee uniform HTTP signatures across API client modules.
-* **Session Management & Performance:** The concrete `BaseClient` wraps `requests.Session` directly to leverage HTTP/1.1 connection pooling (keeping socket connections active) and automatically persist cookies and authorization headers across requests within a single test session.
-* **Automatic Data Masking:** Recursive payload inspection masks sensitive keys (e.g., `authorization`, `password`, `token`) in logs and Allure attachments to prevent credential exposure.
-* **DTO Schemas & Validation (Pydantic v2):** Payloads are strictly modeled via `auth_models` and `product_models`, catching contract drifts early during test execution.
-* **Domain-Specific Clients:** Business logic and endpoints are encapsulated in dedicated clients built on top of the transport layer, keeping test scripts clean of HTTP details.
+* **Contract Enforcement (abc.ABC):** Enforces uniform HTTP signatures across client modules, preventing integration mismatches.
+* **Session Management:** Wraps `requests.Session` to leverage connection pooling and persist auth-headers/cookies, optimizing performance.
+* **Automatic Data Masking:** Recursive inspection masks sensitive keys (auth/tokens) in Allure, ensuring security compliance.
+* **DTO Validation (Pydantic v2):** Strict schema modeling catches contract drifts early, shifting testing left.
+* **Domain-Specific Clients:** Encapsulate business logic above the transport layer, keeping test scripts clean of HTTP implementation details.
+* **Dynamic Test Logic:** API filtering tests adapt to DB states (price/brand/category), covering edge cases like floating-point precision, NULL handling, and pagination integrity.
 
 #### 🖥️ 2. UI Layer Architecture
-* **Page Object Model (POM):** UI interactions and element locators are encapsulated within dedicated page classes extending a common `BasePage`, preventing raw selectors in test scripts.
-* **Auto-Waiting & Race-Condition Handling:** The framework relies on Playwright's native auto-waiting and state assertions, avoiding arbitrary execution pauses.
-* **SPA & Asynchronous Resilience:** POM interactions include explicit checks for dynamic load states and network responses to synchronize browser execution with frontend rendering.
-* **Network Mocking (`page.route`):** Request interception capabilities are used to mock API responses directly in the browser context to decouple test stability from backend/3rd party dependency downtime (e.g., handling specific payload states in test scenarios).
-* **Logging & Traceability:** Common browser interactions are wrapped to provide clear execution steps and integrate seamlessly with Allure reporting.
+* **Page Object Model (POM):** Encapsulates locators within `BasePage`, serving as a single source of truth to reduce maintenance overhead.
+* **SPA Synchronization:** Explicit checks for dynamic load states ensure browser execution remains in sync with frontend rendering.
+* **Auto-Waiting & Resilience:** Leverages Playwright's native state assertions to neutralize race conditions without arbitrary pauses.
+* **Network Mocking (`page.route`):** Decouples UI tests from backend/service downtime by intercepting API responses in-browser.
+* **Logging & Traceability:** Wraps browser interactions to provide clear execution steps, fully integrated with Allure reporting.
 
 #### 📊 3. Observability & Reporting (Allure & Playwright Traces)
 * **Allure Integration:** Structured test execution using Allure steps, attachments, and metadata annotations across API and UI layers.
@@ -142,7 +138,8 @@ pytest --markers
 
 # Create environment configuration file from template
 cp .env.example .env
-# Open the newly created .env file and replace change_me_to_real_password with the actual test account password (welcome01)
+# Open the newly created .env file and replace change_me_to_real_password
+# with the actual test account password (welcome01)
 ```
 
 ### 2. Containerized Run via Docker Compose
@@ -204,15 +201,30 @@ The framework automatically captures diagnostic data upon test failure, which is
 * **Screenshots:** Captured at the moment of failure.
 * **Traces:** Playwright trace archives (`trace.zip`) capturing network activity, console logs, and DOM snapshots for debugging.
 
-### Test Execution Analytics
-The framework integrates with **Allure Reports** to provide comprehensive execution analytics, metrics, and failure diagnostics:
+## 🔍 Identified Stability Issues
+During the development of the test suite, backend stability issues were identified in the target application. These are explicitly tracked via `pytest` markers to maintain CI pipeline integrity while documenting areas for potential backend remediation:
+
+| Issue Type | Endpoint | Root Cause | Handling Strategy |
+| :--- | :--- | :--- | :--- |
+| **HTTP 500** | `/products?sort=invalid_field,asc` | SQL Column Exception | `@pytest.mark.xfail` |
+| **HTTP 500** | `/products?sort=price-asc` | String Delimiter Error | `@pytest.mark.xfail` |
+
+### 📊 Execution Demonstration
+
+#### Allure Reporting Dashboard
+The framework integrates with **Allure Reports** to provide execution metrics, duration tracking, and test status summaries:
 
 ![Allure Graphs and Metrics](assets/nexus_qa_regression_report_01.jpg)
 
-### Deep-Dive Diagnostics
-*Detailed test suite breakdown with intercepted API payloads, request/response headers, JSON bodies, and documented expected failures (XFAIL):*
+#### Failure Analysis & Traceability
+The framework automates the collection of diagnostic artifacts upon test failure, enabling rapid root-cause analysis:
 
 ![Allure Test Details and API Payload](assets/nexus_qa_regression_report_02.jpg)
+
+#### UI Execution Walkthrough
+> Click the image below to play the test execution demonstration:
+
+[![UI Test Execution Demo](assets/nexus_qa_ui_tests_demo_preview.jpg)](assets/nexus_qa_ui_tests_demo.gif)
 
 ---
 
